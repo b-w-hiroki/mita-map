@@ -245,15 +245,14 @@ header {
 
 /* 距離サークル（フィルター選択中） */
 .dist-circle {
-  stroke:var(--accent); stroke-width:2;
-  stroke-dasharray:none;
-  fill:rgba(232,147,90,.10);
-  filter:drop-shadow(0 0 6px rgba(232,147,90,.35));
+  stroke:#e8935a; stroke-width:2.5; stroke-dasharray:none;
+  fill:rgba(232,147,90,.18);
+  filter:drop-shadow(0 0 8px rgba(232,147,90,.5));
 }
-/* 常時表示の目安リング */
-.ref-ring-500  { stroke:#e8935a; stroke-width:1;   stroke-dasharray:4,4; fill:rgba(232,147,90,.03); }
-.ref-ring-1000 { stroke:#a855f7; stroke-width:1;   stroke-dasharray:4,4; fill:rgba(168,85,247,.03); }
-.ref-ring-1500 { stroke:#06b6d4; stroke-width:1;   stroke-dasharray:4,4; fill:rgba(6,182,212,.03); }
+/* 目安リングも塗りを少し濃く */
+.ref-ring-500  { stroke:#e8935a; stroke-width:1; stroke-dasharray:5,4; fill:rgba(232,147,90,.06); }
+.ref-ring-1000 { stroke:#a855f7; stroke-width:1; stroke-dasharray:5,4; fill:rgba(168,85,247,.06); }
+.ref-ring-1500 { stroke:#06b6d4; stroke-width:1; stroke-dasharray:5,4; fill:rgba(6,182,212,.06); }
 .ref-label { background:none; border:none; }
 .ref-label-inner {
   font-size:10px; font-weight:700; white-space:nowrap;
