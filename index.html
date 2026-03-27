@@ -4,8 +4,6 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0">
   <title>三田・田町マップ</title>
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <style>
 /* ═══ テーマ ═══════════════════════════════ */
 :root {
@@ -244,26 +242,15 @@ header {
 .pp-btn:hover { opacity:.85; }
 
 /* 距離サークル（フィルター選択中） */
-.dist-circle {
-  stroke:#e8935a; stroke-width:2.5; stroke-dasharray:none;
-  fill:rgba(232,147,90,.18);
-  filter:drop-shadow(0 0 8px rgba(232,147,90,.5));
+/* Google Maps InfoWindow */
+.gm-style .gm-style-iw-c {
+  background:var(--sf) !important; border-radius:10px !important;
+  box-shadow:0 4px 20px var(--sh) !important; padding:0 !important; max-width:240px !important;
 }
-/* 目安リングも塗りを少し濃く */
-.ref-ring-500  { stroke:#e8935a; stroke-width:1; stroke-dasharray:5,4; fill:rgba(232,147,90,.06); }
-.ref-ring-1000 { stroke:#a855f7; stroke-width:1; stroke-dasharray:5,4; fill:rgba(168,85,247,.06); }
-.ref-ring-1500 { stroke:#06b6d4; stroke-width:1; stroke-dasharray:5,4; fill:rgba(6,182,212,.06); }
-.ref-label { background:none; border:none; }
-.ref-label-inner {
-  font-size:10px; font-weight:700; white-space:nowrap;
-  padding:1px 5px; border-radius:6px;
-  background:rgba(255,255,255,.72); color:#666;
-  border:1px solid rgba(0,0,0,.1);
-  pointer-events:none;
-}
-[data-theme="dark"] .ref-label-inner {
-  background:rgba(30,30,40,.75); color:#aaa; border-color:rgba(255,255,255,.1);
-}
+.gm-style .gm-style-iw-d { overflow:auto !important; padding:0 !important; }
+.gm-style .gm-style-iw-t::after { background:var(--sf) !important; }
+.gm-style-iw-chr { display:none !important; }
+.gm-ui-hover-effect { display:none !important; }
 
 /* ═══ モバイル ═══════════════════════════════ */
 @media (max-width:768px) {
@@ -604,20 +591,35 @@ const SHOP_CATS = [
 const CAT_COLOR = {}, CAT_LABEL = {};
 [...GOURMET_CATS,...SHOP_CATS].forEach(c=>{ CAT_COLOR[c.id]=c.color; CAT_LABEL[c.id]=c.label; });
 
-const TILE = {
-  light:'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',
-  dark: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
+/* Google Maps スタイル */
+const GM_STYLE = {
+  light: [],
+  dark: [
+    {elementType:'geometry',stylers:[{color:'#1a1a2e'}]},
+    {elementType:'labels.text.fill',stylers:[{color:'#9e9eb0'}]},
+    {elementType:'labels.text.stroke',stylers:[{color:'#1a1a2e'}]},
+    {featureType:'road',elementType:'geometry',stylers:[{color:'#2c2c3e'}]},
+    {featureType:'road.highway',elementType:'geometry',stylers:[{color:'#3c3c58'}]},
+    {featureType:'water',elementType:'geometry',stylers:[{color:'#0e1a2e'}]},
+    {featureType:'poi',elementType:'geometry',stylers:[{color:'#22223a'}]},
+    {featureType:'poi.park',elementType:'geometry.fill',stylers:[{color:'#1a2d1a'}]},
+    {featureType:'transit',elementType:'geometry',stylers:[{color:'#2c2c50'}]},
+  ],
 };
-const TILE_ATTR = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/">CARTO</a>';
+const TRANSPARENT_ICON = {
+  url:'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7',
+  scaledSize: null, // set after API loads
+};
 
 /* ══════════════════════════════════════════
    State
 ══════════════════════════════════════════ */
 let mode='gourmet', filter='all', radius=0, isDark=false;
 let activeId=null, recRating=3, modalSpotId=null, detailSpot=null;
-let map, tileLayer, distCircle, routeLayer;
+let map, distCircle, routeLayer;
 const refRings = [];
 const markers = {};
+const infoWindows = {};
 
 /* ══════════════════════════════════════════
    距離計算
@@ -683,16 +685,24 @@ function renderCards(spots){
    マーカー更新
 ══════════════════════════════════════════ */
 function updateMarkers(vis){
+  if(!map) return;
   const ids=new Set(vis.map(s=>s.id));
   Object.keys(markers).forEach(k=>{
     if(k==='base') return;
     const id=parseInt(k);
-    ids.has(id)?markers[id].addTo(map):markers[id].remove();
+    if(!isNaN(id)) markers[id].setMap(ids.has(id)?map:null);
   });
 }
 function updateDistCircle(){
-  if(distCircle){map.removeLayer(distCircle);distCircle=null;}
-  if(radius>0) distCircle=L.circle([BASE.lat,BASE.lng],{radius,className:'dist-circle'}).addTo(map);
+  if(!map) return;
+  if(distCircle){distCircle.setMap(null);distCircle=null;}
+  if(radius>0){
+    distCircle=new google.maps.Circle({
+      map, center:{lat:BASE.lat,lng:BASE.lng}, radius,
+      strokeColor:'#e8935a', strokeWeight:2.5, strokeOpacity:1,
+      fillColor:'#e8935a', fillOpacity:0.15, clickable:false, zIndex:1,
+    });
+  }
 }
 
 /* ══════════════════════════════════════════
@@ -701,8 +711,10 @@ function updateDistCircle(){
 function onSelect(s){
   activeId=s.id;
   if(map&&markers[s.id]){
-    map.setView([s.lat,s.lng],17,{animate:true});
-    markers[s.id].openPopup();
+    map.panTo({lat:s.lat,lng:s.lng});
+    map.setZoom(17);
+    Object.values(infoWindows).forEach(iw=>iw.close());
+    infoWindows[s.id]?.open(map,markers[s.id]);
   }
   openDetail(s);
 }
@@ -766,10 +778,10 @@ function closeDetail(){
 document.getElementById('backBtn').addEventListener('click',closeDetail);
 
 /* ══════════════════════════════════════════
-   マップルーティング（OSRM）
+   マップルーティング（OSRM + Google Maps Polyline）
 ══════════════════════════════════════════ */
 function clearRoute(){
-  if(routeLayer){map.removeLayer(routeLayer);routeLayer=null;}
+  if(routeLayer){routeLayer.setMap(null);routeLayer=null;}
   document.getElementById('routeInfo').textContent='';
   const btn=document.getElementById('dRouteMapBtn');
   if(btn){btn.className='act-btn act-btn-route';btn.textContent='🗺️ ルートを表示';}
@@ -777,9 +789,7 @@ function clearRoute(){
 
 async function toggleRoute(s){
   const btn=document.getElementById('dRouteMapBtn');
-  if(routeLayer){
-    clearRoute(); return;
-  }
+  if(routeLayer){ clearRoute(); return; }
   btn.textContent='⏳ 取得中…'; btn.disabled=true;
   try {
     const url=`https://router.project-osrm.org/route/v1/foot/${BASE.lng},${BASE.lat};${s.lng},${s.lat}?overview=full&geometries=geojson`;
@@ -789,10 +799,15 @@ async function toggleRoute(s){
     const leg=data.routes[0].legs[0];
     const dist=Math.round(leg.distance);
     const mins=Math.round(leg.duration/60);
-    routeLayer=L.geoJSON(data.routes[0].geometry,{
-      style:{color:'#e8935a',weight:4,opacity:.85,dashArray:'10,5'},
-    }).addTo(map);
-    map.fitBounds(routeLayer.getBounds(),{padding:[40,40]});
+    const path=data.routes[0].geometry.coordinates.map(([lng,lat])=>({lat,lng}));
+    routeLayer=new google.maps.Polyline({
+      path, map,
+      strokeColor:'#e8935a', strokeWeight:5, strokeOpacity:0.85,
+      icons:[{icon:{path:google.maps.SymbolPath.FORWARD_OPEN_ARROW,scale:3,strokeColor:'#e8935a'},offset:'100%',repeat:'80px'}],
+    });
+    const bounds=new google.maps.LatLngBounds();
+    path.forEach(p=>bounds.extend(p));
+    map.fitBounds(bounds,{padding:60});
     document.getElementById('routeInfo').textContent=`📏 ${dist}m・約${mins}分`;
     btn.className='act-btn act-btn-route active';
     btn.textContent='✕ ルートを消す';
@@ -881,25 +896,20 @@ function applyBase(lat,lng,name){
   updateBaseStatus();
   refreshBaseMarker();
   applyFilters();
-  if(radius>0) map.setView([lat,lng],15,{animate:true});
+  if(map&&radius>0) map.setCenter({lat,lng});
 }
 function refreshBaseMarker(){
-  if(markers['base']){
-    markers['base'].setLatLng([BASE.lat,BASE.lng]);
-    markers['base'].setPopupContent(`<div class="pp-name">🏢 ${BASE.name}</div><div class="pp-genre" style="color:var(--accent)">ここが拠点です</div>`);
-  }
-  // ポップアップの徒歩時間を更新
+  if(markers['base']) markers['base'].setPosition({lat:BASE.lat,lng:BASE.lng});
+  if(infoWindows['base']) infoWindows['base'].setContent(ppBaseHTML());
+  // 徒歩時間を更新
   [...SPOTS,...SHOPS].forEach(s=>{
-    if(markers[s.id]) markers[s.id].setPopupContent(`
-      <div class="pp-name">${s.name}</div>
-      <div class="pp-genre">${s.genre}</div>
-      <div class="pp-price">${s.price}</div>
-      <div class="pp-walk">🚶 拠点から約${walkMin(s)}分</div>
-      <button class="pp-btn" onclick="__sel(${s.id})">詳細を見る →</button>`);
+    if(infoWindows[s.id]) infoWindows[s.id].setContent(ppSpotHTML(s));
   });
   updateDistCircle();
   buildRefRings();
 }
+function ppBaseHTML(){ return `<div class="pp-wrap"><div class="pp-name">🏢 ${BASE.name}</div><div class="pp-genre" style="color:var(--accent)">ここが拠点です</div></div>`; }
+function ppSpotHTML(s){ return `<div class="pp-wrap"><div class="pp-name">${s.name}</div><div class="pp-genre">${s.genre}</div><div class="pp-price">${s.price}</div><div class="pp-walk">🚶 拠点から約${walkMin(s)}分</div><button class="pp-btn" onclick="__sel(${s.id})">詳細を見る →</button></div>`; }
 async function searchNominatim(){
   const q=document.getElementById('setSearch').value.trim();
   if(!q)return;
@@ -920,7 +930,7 @@ window.__pickLocation=(lat,lng,name)=>{
   const n=document.getElementById('setName').value.trim()||name||'拠点';
   applyBase(parseFloat(lat),parseFloat(lng),n);
   closeSettingsModal();
-  map.setView([parseFloat(lat),parseFloat(lng)],16,{animate:true});
+  if(map) map.setCenter({lat:parseFloat(lat),lng:parseFloat(lng)});
 };
 document.getElementById('settingsBtn').addEventListener('click',openSettingsModal);
 document.getElementById('settingsClose').addEventListener('click',closeSettingsModal);
@@ -936,7 +946,7 @@ document.getElementById('setGeoBtn').addEventListener('click',()=>{
     applyBase(pos.coords.latitude,pos.coords.longitude,name);
     document.getElementById('setGeoBtn').textContent='📍 現在地を拠点に設定';
     closeSettingsModal();
-    map.setView([pos.coords.latitude,pos.coords.longitude],16,{animate:true});
+    if(map) map.setCenter({lat:pos.coords.latitude,lng:pos.coords.longitude});
   },()=>{
     alert('位置情報の取得に失敗しました');
     document.getElementById('setGeoBtn').textContent='📍 現在地を拠点に設定';
@@ -989,7 +999,8 @@ document.querySelectorAll('[data-radius]').forEach(btn=>{
     btn.classList.add('active');
     if(map){
       const z = RADIUS_ZOOM[radius] ?? 15;
-      map.setView([BASE.lat,BASE.lng], z, {animate:true});
+      map.setCenter({lat:BASE.lat,lng:BASE.lng});
+      map.setZoom(z);
     }
     applyFilters();
   });
@@ -1002,84 +1013,95 @@ function toggleTheme(){
   isDark=!isDark;
   document.documentElement.setAttribute('data-theme',isDark?'dark':'light');
   document.getElementById('themeBtn').textContent=isDark?'🌙':'☀️';
-  if(tileLayer&&map){
-    map.removeLayer(tileLayer);
-    tileLayer=L.tileLayer(isDark?TILE.dark:TILE.light,{attribution:TILE_ATTR,maxZoom:19}).addTo(map);
-    tileLayer.bringToBack();
-  }
+  if(map) map.setOptions({styles:isDark?GM_STYLE.dark:GM_STYLE.light});
+  buildRefRings(); // ラベル色を更新
 }
 document.getElementById('themeBtn').addEventListener('click',toggleTheme);
 
 /* ══════════════════════════════════════════
-   地図初期化
+   地図初期化（Google Maps）
 ══════════════════════════════════════════ */
 function buildRefRings(){
-  const defs = [
-    { r:500,  cls:'ref-ring-500',  label:'500m' },
-    { r:1000, cls:'ref-ring-1000', label:'1km'  },
-    { r:1500, cls:'ref-ring-1500', label:'1.5km'},
-  ];
-  refRings.forEach(l=>map.removeLayer(l));
+  if(!map) return;
+  refRings.forEach(r=>r.setMap(null));
   refRings.length=0;
+  const defs=[
+    {r:500,  stroke:'#e8935a', fill:'rgba(232,147,90,.06)', label:'500m' },
+    {r:1000, stroke:'#a855f7', fill:'rgba(168,85,247,.06)', label:'1km'  },
+    {r:1500, stroke:'#06b6d4', fill:'rgba(6,182,212,.06)',  label:'1.5km'},
+  ];
+  const tinyIcon={url:'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7',scaledSize:new google.maps.Size(1,1)};
   defs.forEach(d=>{
-    const ring = L.circle([BASE.lat,BASE.lng],{
-      radius:d.r, className:d.cls, interactive:false,
-    }).addTo(map);
-    // ラベルを北端に配置
-    const labelLat = BASE.lat + (d.r / 111320);
-    const icon = L.divIcon({
-      className:'ref-label',
-      html:`<div class="ref-label-inner">${d.label}</div>`,
-      iconAnchor:[0,8],
+    const circle=new google.maps.Circle({
+      map, center:{lat:BASE.lat,lng:BASE.lng}, radius:d.r,
+      strokeColor:d.stroke, strokeWeight:1.5, strokeOpacity:0.7,
+      fillColor:d.stroke, fillOpacity:0.05, clickable:false, zIndex:0,
     });
-    const lbl = L.marker([labelLat, BASE.lng],{icon,interactive:false,zIndexOffset:-100}).addTo(map);
-    refRings.push(ring, lbl);
+    const labelLat=BASE.lat+(d.r/111320);
+    const lbl=new google.maps.Marker({
+      position:{lat:labelLat,lng:BASE.lng}, map,
+      label:{text:d.label, color:isDark?'#bbb':'#555', fontSize:'10px', fontWeight:'bold'},
+      icon:tinyIcon, clickable:false, zIndex:0,
+    });
+    refRings.push(circle,lbl);
   });
 }
 
-function initMap(){
-  map=L.map('map',{center:[BASE.lat,BASE.lng],zoom:16});
-  tileLayer=L.tileLayer(TILE.light,{attribution:TILE_ATTR,maxZoom:19}).addTo(map);
-  const baseIcon=L.divIcon({
-    className:'',
-    html:`<div class="base-wrap"><div class="base-pulse"></div><div class="base-pulse base-pulse2"></div><div class="base-core">🏢</div></div>`,
-    iconSize:[40,40],iconAnchor:[20,20],
+window.initMap=function(){
+  map=new google.maps.Map(document.getElementById('map'),{
+    center:{lat:BASE.lat,lng:BASE.lng}, zoom:16,
+    styles:GM_STYLE.light,
+    mapTypeControl:false, streetViewControl:false, fullscreenControl:false,
+    zoomControlOptions:{position:google.maps.ControlPosition.RIGHT_BOTTOM},
   });
-  markers['base']=L.marker([BASE.lat,BASE.lng],{icon:baseIcon,zIndexOffset:1000}).addTo(map)
-    .bindPopup(`<div class="pp-name">🏢 ${BASE.name}</div><div class="pp-genre" style="color:var(--accent)">ここが拠点です</div>`);
+  // 拠点マーカー
+  const baseSVG=encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="44" height="44"><circle cx="22" cy="22" r="19" fill="#e8935a" stroke="white" stroke-width="3"/><text x="22" y="29" text-anchor="middle" font-size="22" font-family="sans-serif">🏢</text></svg>`);
+  markers['base']=new google.maps.Marker({
+    position:{lat:BASE.lat,lng:BASE.lng}, map,
+    icon:{url:`data:image/svg+xml;charset=UTF-8,${baseSVG}`,scaledSize:new google.maps.Size(44,44),anchor:new google.maps.Point(22,22)},
+    title:BASE.name, zIndex:1000,
+  });
+  infoWindows['base']=new google.maps.InfoWindow({content:ppBaseHTML()});
+  markers['base'].addListener('click',()=>{ Object.values(infoWindows).forEach(iw=>iw.close()); infoWindows['base'].open(map,markers['base']); });
   buildSpotMarkers(SPOTS);
   buildSpotMarkers(SHOPS);
-  SHOPS.forEach(s=>markers[s.id].remove());
+  SHOPS.forEach(s=>markers[s.id].setMap(null));
   buildRefRings();
-}
+  applyFilters();
+};
+
 function buildSpotMarkers(data){
   data.forEach(s=>{
-    const m=L.circleMarker([s.lat,s.lng],{radius:9,fillColor:CAT_COLOR[s.cat],fillOpacity:.88,color:'#fff',weight:2});
-    m.bindPopup(`
-      <div class="pp-name">${s.name}</div>
-      <div class="pp-genre">${s.genre}</div>
-      <div class="pp-price">${s.price}</div>
-      <div class="pp-walk">🚶 拠点から約${walkMin(s)}分</div>
-      <button class="pp-btn" onclick="__sel(${s.id})">詳細を見る →</button>`,{maxWidth:220});
-    m.on('click',()=>{
+    const marker=new google.maps.Marker({
+      position:{lat:s.lat,lng:s.lng}, map,
+      icon:{path:google.maps.SymbolPath.CIRCLE,scale:9,fillColor:CAT_COLOR[s.cat],fillOpacity:.9,strokeColor:'#fff',strokeWeight:2},
+      title:s.name,
+    });
+    const iw=new google.maps.InfoWindow({content:ppSpotHTML(s),maxWidth:240});
+    marker.addListener('click',()=>{
+      Object.values(infoWindows).forEach(w=>w.close());
+      iw.open(map,marker);
       const card=document.querySelector(`.card[data-id="${s.id}"]`);
       if(card){document.querySelectorAll('.card').forEach(c=>c.classList.remove('active'));card.classList.add('active');card.scrollIntoView({behavior:'smooth',block:'nearest'});}
     });
-    markers[s.id]=m;
+    markers[s.id]=marker;
+    infoWindows[s.id]=iw;
   });
 }
+
 function rebuildModeMarkers(){
-  SPOTS.forEach(s=>{try{markers[s.id].remove();}catch{}});
-  SHOPS.forEach(s=>{try{markers[s.id].remove();}catch{}});
-  currentData().forEach(s=>markers[s.id]?.addTo(map));
+  if(!map) return;
+  SPOTS.forEach(s=>markers[s.id]?.setMap(null));
+  SHOPS.forEach(s=>markers[s.id]?.setMap(null));
+  currentData().forEach(s=>markers[s.id]?.setMap(map));
 }
 
 /* ══════════════════════════════════════════
    起動
 ══════════════════════════════════════════ */
 buildCatFilter();
-initMap();
-applyFilters();
+// initMap は Google Maps API ロード完了後にコールバックで呼ばれる
 </script>
+<script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyClKmv5SxGcODSb2uQN8vksg7N8_S97lMA&callback=initMap" async defer></script>
 </body>
 </html>
