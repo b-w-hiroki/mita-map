@@ -243,8 +243,23 @@ header {
 .pp-btn   { display:block; width:100%; margin-top:8px; padding:7px; background:var(--accent); color:#fff; border:none; border-radius:7px; font-size:12px; font-weight:700; text-align:center; cursor:pointer; }
 .pp-btn:hover { opacity:.85; }
 
-/* 距離サークル */
+/* 距離サークル（フィルター用） */
 .dist-circle { stroke:var(--accent); stroke-width:1.5; stroke-dasharray:6,4; fill:rgba(232,147,90,.04); }
+/* 常時表示の目安リング */
+.ref-ring-500  { stroke:#e8935a; stroke-width:1;   stroke-dasharray:4,4; fill:rgba(232,147,90,.03); }
+.ref-ring-1000 { stroke:#a855f7; stroke-width:1;   stroke-dasharray:4,4; fill:rgba(168,85,247,.03); }
+.ref-ring-1500 { stroke:#06b6d4; stroke-width:1;   stroke-dasharray:4,4; fill:rgba(6,182,212,.03); }
+.ref-label { background:none; border:none; }
+.ref-label-inner {
+  font-size:10px; font-weight:700; white-space:nowrap;
+  padding:1px 5px; border-radius:6px;
+  background:rgba(255,255,255,.72); color:#666;
+  border:1px solid rgba(0,0,0,.1);
+  pointer-events:none;
+}
+[data-theme="dark"] .ref-label-inner {
+  background:rgba(30,30,40,.75); color:#aaa; border-color:rgba(255,255,255,.1);
+}
 
 /* ═══ モバイル ═══════════════════════════════ */
 @media (max-width:768px) {
@@ -597,6 +612,7 @@ const TILE_ATTR = '&copy; <a href="https://www.openstreetmap.org/copyright">Open
 let mode='gourmet', filter='all', radius=0, isDark=false;
 let activeId=null, recRating=3, modalSpotId=null, detailSpot=null;
 let map, tileLayer, distCircle, routeLayer;
+const refRings = [];
 const markers = {};
 
 /* ══════════════════════════════════════════
@@ -878,6 +894,7 @@ function refreshBaseMarker(){
       <button class="pp-btn" onclick="__sel(${s.id})">詳細を見る →</button>`);
   });
   updateDistCircle();
+  buildRefRings();
 }
 async function searchNominatim(){
   const q=document.getElementById('setSearch').value.trim();
@@ -986,8 +1003,32 @@ document.getElementById('themeBtn').addEventListener('click',toggleTheme);
 /* ══════════════════════════════════════════
    地図初期化
 ══════════════════════════════════════════ */
+function buildRefRings(){
+  const defs = [
+    { r:500,  cls:'ref-ring-500',  label:'500m' },
+    { r:1000, cls:'ref-ring-1000', label:'1km'  },
+    { r:1500, cls:'ref-ring-1500', label:'1.5km'},
+  ];
+  refRings.forEach(l=>map.removeLayer(l));
+  refRings.length=0;
+  defs.forEach(d=>{
+    const ring = L.circle([BASE.lat,BASE.lng],{
+      radius:d.r, className:d.cls, interactive:false,
+    }).addTo(map);
+    // ラベルを北端に配置
+    const labelLat = BASE.lat + (d.r / 111320);
+    const icon = L.divIcon({
+      className:'ref-label',
+      html:`<div class="ref-label-inner">${d.label}</div>`,
+      iconAnchor:[0,8],
+    });
+    const lbl = L.marker([labelLat, BASE.lng],{icon,interactive:false,zIndexOffset:-100}).addTo(map);
+    refRings.push(ring, lbl);
+  });
+}
+
 function initMap(){
-  map=L.map('map',{center:[35.6474,139.7430],zoom:15});
+  map=L.map('map',{center:[BASE.lat,BASE.lng],zoom:16});
   tileLayer=L.tileLayer(TILE.light,{attribution:TILE_ATTR,maxZoom:19}).addTo(map);
   const baseIcon=L.divIcon({
     className:'',
@@ -999,6 +1040,7 @@ function initMap(){
   buildSpotMarkers(SPOTS);
   buildSpotMarkers(SHOPS);
   SHOPS.forEach(s=>markers[s.id].remove());
+  buildRefRings();
 }
 function buildSpotMarkers(data){
   data.forEach(s=>{
