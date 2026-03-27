@@ -243,8 +243,13 @@ header {
 .pp-btn   { display:block; width:100%; margin-top:8px; padding:7px; background:var(--accent); color:#fff; border:none; border-radius:7px; font-size:12px; font-weight:700; text-align:center; cursor:pointer; }
 .pp-btn:hover { opacity:.85; }
 
-/* 距離サークル（フィルター用） */
-.dist-circle { stroke:var(--accent); stroke-width:1.5; stroke-dasharray:6,4; fill:rgba(232,147,90,.04); }
+/* 距離サークル（フィルター選択中） */
+.dist-circle {
+  stroke:var(--accent); stroke-width:2;
+  stroke-dasharray:none;
+  fill:rgba(232,147,90,.10);
+  filter:drop-shadow(0 0 6px rgba(232,147,90,.35));
+}
 /* 常時表示の目安リング */
 .ref-ring-500  { stroke:#e8935a; stroke-width:1;   stroke-dasharray:4,4; fill:rgba(232,147,90,.03); }
 .ref-ring-1000 { stroke:#a855f7; stroke-width:1;   stroke-dasharray:4,4; fill:rgba(168,85,247,.03); }
@@ -975,12 +980,18 @@ document.querySelectorAll('.mode-btn').forEach(btn=>{
 /* ══════════════════════════════════════════
    距離フィルター
 ══════════════════════════════════════════ */
+// 距離→ズームレベル対応表
+const RADIUS_ZOOM = { 0:16, 300:17, 500:16, 800:16, 1000:15 };
+
 document.querySelectorAll('[data-radius]').forEach(btn=>{
   btn.addEventListener('click',()=>{
     radius=parseInt(btn.dataset.radius);
     document.querySelectorAll('[data-radius]').forEach(b=>b.classList.remove('active'));
     btn.classList.add('active');
-    if(map&&radius>0) map.setView([BASE.lat,BASE.lng],15,{animate:true});
+    if(map){
+      const z = RADIUS_ZOOM[radius] ?? 15;
+      map.setView([BASE.lat,BASE.lng], z, {animate:true});
+    }
     applyFilters();
   });
 });
