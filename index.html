@@ -1,0 +1,1033 @@
+<!DOCTYPE html>
+<html lang="ja" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0">
+  <title>三田・田町マップ</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <style>
+/* ═══ テーマ ═══════════════════════════════ */
+:root {
+  --lunch:#f59e2b; --dinner:#ef4444; --izakaya:#a855f7;
+  --bar:#06b6d4; --cafe:#22c55e;
+  --conv:#ff7043; --super:#26a69a; --drug:#7e57c2;
+  --accent:#e8935a;
+}
+[data-theme="light"] { --bg:#f0f0eb; --sf:#ffffff; --sf2:#f5f5f0; --bd:#ddddd5; --tx:#1a1a2e; --tx2:#77779a; --sh:rgba(0,0,0,.10); }
+[data-theme="dark"]  { --bg:#0f0f13; --sf:#1a1a24; --sf2:#22222f; --bd:#2e2e3e; --tx:#eeeef2; --tx2:#8888a8; --sh:rgba(0,0,0,.55); }
+
+/* ═══ リセット ════════════════════════════ */
+*,*::before,*::after { box-sizing:border-box; margin:0; padding:0; }
+html,body { height:100%; font-family:'Hiragino Sans','Meiryo',sans-serif; background:var(--bg); color:var(--tx); overflow:hidden; }
+body { display:flex; flex-direction:column; }
+button { cursor:pointer; font-family:inherit; }
+a { color:inherit; }
+
+/* ═══ Header ═══════════════════════════════ */
+header {
+  display:flex; align-items:center; gap:8px; flex-wrap:nowrap;
+  padding:9px 14px; background:var(--sf); border-bottom:1px solid var(--bd);
+  flex-shrink:0; z-index:200;
+}
+.hd-logo { flex-shrink:0; }
+.hd-title { flex:1; min-width:0; }
+.hd-title h1 { font-size:14px; font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; line-height:1.2; }
+.hd-title h1 span { color:var(--accent); }
+.hd-title small { font-size:10px; color:var(--tx2); display:block; }
+.mode-toggle { display:flex; gap:3px; flex-shrink:0; }
+.mode-btn { padding:5px 9px; border-radius:13px; border:1px solid var(--bd); background:transparent; color:var(--tx2); font-size:11px; transition:all .18s; white-space:nowrap; }
+.mode-btn.active { background:var(--accent); border-color:var(--accent); color:#fff; font-weight:700; }
+.icon-btn { width:32px; height:32px; border-radius:50%; border:1px solid var(--bd); background:var(--sf2); color:var(--tx); font-size:14px; display:flex; align-items:center; justify-content:center; transition:all .18s; flex-shrink:0; }
+.icon-btn:hover { border-color:var(--accent); }
+#visibleCount { font-size:11px; color:var(--tx2); white-space:nowrap; flex-shrink:0; }
+
+/* ═══ フィルターエリア ══════════════════════ */
+.filter-area { flex-shrink:0; background:var(--sf); border-bottom:1px solid var(--bd); }
+.filter-row { display:flex; align-items:center; gap:5px; padding:6px 12px; overflow-x:auto; scrollbar-width:none; }
+.filter-row::-webkit-scrollbar { display:none; }
+.filter-row+.filter-row { border-top:1px solid var(--bd); }
+.filter-label { font-size:10px; color:var(--tx2); white-space:nowrap; font-weight:600; flex-shrink:0; }
+.f-btn { display:flex; align-items:center; gap:4px; padding:4px 10px; border-radius:13px; border:1px solid var(--bd); background:transparent; color:var(--tx2); font-size:11px; white-space:nowrap; transition:all .18s; }
+.f-btn .dot { width:6px; height:6px; border-radius:50%; }
+.f-btn:hover { border-color:var(--accent); color:var(--tx); }
+.f-btn.active { background:var(--accent); border-color:var(--accent); color:#fff; font-weight:700; }
+.f-btn.active .dot { background:rgba(255,255,255,.6); }
+
+/* ═══ メインレイアウト ══════════════════════ */
+.main { flex:1; display:flex; overflow:hidden; min-height:0; }
+#map { flex:1; min-width:0; min-height:0; }
+
+/* ═══ サイドバー ════════════════════════════ */
+.sidebar {
+  width:340px; flex-shrink:0; min-height:0;
+  position:relative; overflow:hidden;
+  background:var(--sf); border-left:1px solid var(--bd);
+  display:flex; flex-direction:column;
+}
+.sidebar-pane {
+  position:absolute; inset:0; min-height:0;
+  display:flex; flex-direction:column;
+  background:var(--sf);
+  transition:transform .28s cubic-bezier(.25,.8,.25,1);
+  will-change:transform;
+}
+.list-pane   { transform:translateX(0); }
+.list-pane.out { transform:translateX(-100%); }
+.detail-pane { transform:translateX(100%); }
+.detail-pane.in { transform:translateX(0); }
+
+.pane-header { display:flex; align-items:center; gap:8px; padding:10px 12px; border-bottom:1px solid var(--bd); flex-shrink:0; }
+.pane-header strong { font-size:13px; }
+.pane-header span { font-size:11px; color:var(--tx2); }
+.pane-scroll { flex:1; overflow-y:auto; min-height:0; scrollbar-width:thin; scrollbar-color:var(--bd) transparent; }
+
+/* ═══ カード ════════════════════════════════ */
+.card-list { padding:8px; display:flex; flex-direction:column; gap:6px; }
+.card {
+  background:var(--sf2); border:1px solid var(--bd); border-radius:10px;
+  padding:10px 11px 10px 13px;
+  cursor:pointer; transition:border-color .15s, box-shadow .15s, transform .15s;
+  position:relative; overflow:hidden;
+}
+.card::before { content:''; position:absolute; left:0; top:0; bottom:0; width:3px; border-radius:3px 0 0 3px; }
+.card[data-cat="lunch"]::before   { background:var(--lunch); }
+.card[data-cat="dinner"]::before  { background:var(--dinner); }
+.card[data-cat="izakaya"]::before { background:var(--izakaya); }
+.card[data-cat="bar"]::before     { background:var(--bar); }
+.card[data-cat="cafe"]::before    { background:var(--cafe); }
+.card[data-cat="conv"]::before    { background:var(--conv); }
+.card[data-cat="super"]::before   { background:var(--super); }
+.card[data-cat="drug"]::before    { background:var(--drug); }
+.card:hover { border-color:var(--accent); transform:translateY(-1px); box-shadow:0 3px 8px var(--sh); }
+.card.active { border-color:var(--accent); }
+.card-row1 { display:flex; align-items:flex-start; justify-content:space-between; gap:6px; margin-bottom:2px; }
+.card-name { font-size:13px; font-weight:700; line-height:1.3; }
+.card-badges { display:flex; align-items:center; gap:3px; flex-shrink:0; }
+.visit-badge { font-size:10px; background:rgba(232,147,90,.16); color:var(--accent); border-radius:8px; padding:1px 5px; font-weight:700; }
+.fav-icon { font-size:13px; color:var(--bd); line-height:1; }
+.fav-icon.on { color:var(--accent); }
+.card-genre-tag { display:inline-block; font-size:10px; border:1px solid var(--bd); border-radius:4px; padding:1px 5px; color:var(--tx2); background:var(--bg); margin-bottom:4px; }
+.card-desc { font-size:11px; color:var(--tx2); line-height:1.5; margin-bottom:6px; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
+.card-footer { display:flex; align-items:center; gap:5px; flex-wrap:wrap; }
+.price-tag { font-size:11px; font-weight:700; color:var(--accent); }
+.cat-badge { font-size:10px; padding:1px 5px; border-radius:7px; font-weight:600; }
+.cat-badge.lunch   { background:rgba(245,158,43,.13); color:var(--lunch); }
+.cat-badge.dinner  { background:rgba(239,68,68,.13);  color:var(--dinner); }
+.cat-badge.izakaya { background:rgba(168,85,247,.13); color:var(--izakaya); }
+.cat-badge.bar     { background:rgba(6,182,212,.13);  color:var(--bar); }
+.cat-badge.cafe    { background:rgba(34,197,94,.13);  color:var(--cafe); }
+.cat-badge.conv    { background:rgba(255,112,67,.13); color:var(--conv); }
+.cat-badge.super   { background:rgba(38,166,154,.13); color:var(--super); }
+.cat-badge.drug    { background:rgba(126,87,194,.13); color:var(--drug); }
+.stars-sm { color:#f59e0b; font-size:10px; }
+.walk-sm  { font-size:10px; color:var(--tx2); margin-left:auto; }
+
+/* ═══ 詳細パネル ════════════════════════════ */
+.fav-btn { margin-left:auto; font-size:18px; background:none; border:none; color:var(--bd); transition:color .18s; padding:0 2px; }
+.fav-btn.on { color:var(--accent); }
+.detail-photo { width:100%; height:170px; object-fit:cover; display:block; background:var(--bd); }
+.detail-body { padding:14px 15px; }
+.detail-name { font-size:18px; font-weight:800; margin-bottom:5px; line-height:1.3; }
+.detail-meta { display:flex; gap:6px; align-items:center; flex-wrap:wrap; margin-bottom:12px; }
+.detail-genre { font-size:11px; border:1px solid var(--bd); border-radius:5px; padding:2px 6px; color:var(--tx2); }
+.detail-price { font-size:14px; font-weight:700; color:var(--accent); }
+.detail-stars { color:#f59e0b; font-size:13px; }
+.sec-label { font-size:10px; font-weight:700; color:var(--tx2); letter-spacing:.08em; text-transform:uppercase; margin:13px 0 5px; }
+.recommend-box { font-size:12px; line-height:1.75; background:var(--sf2); border-left:3px solid var(--accent); border-radius:0 8px 8px 0; padding:9px 11px; color:var(--tx); }
+.info-row { display:flex; align-items:flex-start; gap:7px; font-size:12px; padding:5px 0; border-bottom:1px solid var(--bd); }
+.info-row:last-child { border-bottom:none; }
+.info-ico { width:16px; text-align:center; flex-shrink:0; line-height:1.6; }
+.info-lbl { color:var(--tx2); width:60px; flex-shrink:0; line-height:1.6; }
+.info-val { color:var(--tx); flex:1; line-height:1.6; }
+.walk-chip { display:inline-flex; align-items:center; gap:3px; background:rgba(232,147,90,.11); color:var(--accent); border-radius:14px; padding:2px 8px; font-size:11px; font-weight:700; }
+.action-btns { display:grid; grid-template-columns:1fr 1fr; gap:7px; margin-top:14px; }
+.act-btn {
+  display:flex; align-items:center; justify-content:center; gap:5px;
+  padding:10px 6px; border-radius:9px; font-size:12px; font-weight:700;
+  text-decoration:none; border:none; transition:all .18s; cursor:pointer;
+}
+.act-btn-primary  { background:var(--accent); color:#fff; }
+.act-btn-secondary { background:var(--sf2); border:1px solid var(--bd); color:var(--tx); }
+.act-btn-route    { background:var(--sf2); border:1px solid var(--bd); color:var(--tx); }
+.act-btn-route.active { background:rgba(232,147,90,.13); border-color:var(--accent); color:var(--accent); }
+.act-btn:hover { opacity:.82; }
+.gmaps-link { display:flex; align-items:center; justify-content:center; gap:4px; margin-top:6px; font-size:11px; color:var(--tx2); text-decoration:none; padding:5px; border-radius:7px; transition:color .18s; }
+.gmaps-link:hover { color:var(--accent); }
+.route-info { font-size:11px; color:var(--accent); font-weight:600; text-align:center; margin-top:4px; min-height:16px; }
+
+/* 訪問履歴 */
+.visit-empty { font-size:12px; color:var(--tx2); padding:6px 0; }
+.visit-item { padding:8px 0; border-bottom:1px solid var(--bd); }
+.visit-item:last-child { border-bottom:none; }
+.visit-item-head { display:flex; align-items:center; gap:6px; margin-bottom:2px; }
+.visit-date  { font-size:11px; font-weight:700; color:var(--accent); }
+.visit-stars { color:#f59e0b; font-size:11px; }
+.visit-food  { font-size:12px; color:var(--tx); font-weight:600; }
+.visit-memo  { font-size:11px; color:var(--tx2); line-height:1.5; margin-top:2px; }
+.del-btn { margin-left:auto; font-size:12px; color:var(--tx2); background:none; border:none; padding:0 3px; }
+.del-btn:hover { color:#ef4444; }
+
+/* ═══ モーダル共通 ═══════════════════════════ */
+.modal-overlay {
+  position:fixed; inset:0; background:rgba(0,0,0,.5); z-index:500;
+  display:flex; align-items:center; justify-content:center;
+  opacity:0; pointer-events:none; transition:opacity .2s;
+}
+.modal-overlay.open { opacity:1; pointer-events:all; }
+.modal {
+  background:var(--sf); border:1px solid var(--bd); border-radius:16px;
+  width:92%; max-width:420px; max-height:90vh;
+  display:flex; flex-direction:column; overflow:hidden;
+  box-shadow:0 8px 32px var(--sh);
+}
+.modal-head { display:flex; align-items:center; padding:13px 15px; border-bottom:1px solid var(--bd); flex-shrink:0; }
+.modal-head h3 { flex:1; font-size:14px; font-weight:700; }
+.modal-close { background:none; border:none; font-size:20px; color:var(--tx2); padding:0 2px; line-height:1; }
+.modal-body { padding:14px; overflow-y:auto; display:flex; flex-direction:column; gap:11px; }
+.form-label { font-size:11px; font-weight:700; color:var(--tx2); display:block; margin-bottom:4px; }
+.form-input, .form-textarea {
+  width:100%; padding:8px 10px;
+  background:var(--sf2); border:1px solid var(--bd); border-radius:8px;
+  color:var(--tx); font-size:13px; font-family:inherit; transition:border-color .18s;
+}
+.form-input:focus, .form-textarea:focus { outline:none; border-color:var(--accent); }
+.form-textarea { min-height:65px; resize:vertical; }
+.star-picker { display:flex; gap:5px; }
+.star-picker button { background:none; border:none; font-size:24px; color:var(--bd); transition:color .12s; padding:0; }
+.star-picker button.lit { color:#f59e0b; }
+.modal-foot { display:flex; gap:7px; padding:11px 14px; border-top:1px solid var(--bd); flex-shrink:0; }
+.btn-cancel { flex:1; padding:9px; border-radius:8px; border:1px solid var(--bd); background:var(--sf2); color:var(--tx); font-size:13px; font-weight:600; }
+.btn-save   { flex:1; padding:9px; border-radius:8px; border:none; background:var(--accent); color:#fff; font-size:13px; font-weight:700; }
+.btn-cancel:hover, .btn-save:hover { opacity:.84; }
+
+/* 設定モーダル追加スタイル */
+.search-row { display:flex; gap:6px; }
+.search-row .form-input { flex:1; }
+.btn-search { padding:8px 12px; border-radius:8px; border:none; background:var(--accent); color:#fff; font-size:12px; font-weight:700; white-space:nowrap; }
+.search-results { display:flex; flex-direction:column; gap:4px; margin-top:5px; }
+.sr-item { padding:8px 10px; background:var(--sf2); border:1px solid var(--bd); border-radius:7px; cursor:pointer; transition:border-color .15s; }
+.sr-item:hover { border-color:var(--accent); }
+.sr-item-name { font-size:12px; font-weight:600; color:var(--tx); }
+.sr-item-addr { font-size:10px; color:var(--tx2); margin-top:2px; line-height:1.4; }
+.base-status { background:var(--sf2); border:1px solid var(--bd); border-radius:8px; padding:9px 11px; font-size:12px; }
+.base-status-name { font-weight:700; color:var(--tx); }
+.base-status-coord { font-size:10px; color:var(--tx2); margin-top:2px; }
+.btn-geo { width:100%; padding:9px; border-radius:8px; border:1px solid var(--bd); background:var(--sf2); color:var(--tx); font-size:12px; font-weight:600; transition:all .18s; }
+.btn-geo:hover { border-color:var(--accent); color:var(--accent); }
+.search-loading { font-size:12px; color:var(--tx2); text-align:center; padding:8px 0; }
+
+/* ═══ Leaflet カスタム ══════════════════════ */
+.leaflet-popup-content-wrapper { background:var(--sf); border:1px solid var(--bd); border-radius:10px; box-shadow:0 4px 16px var(--sh); color:var(--tx); }
+.leaflet-popup-content { margin:10px 12px; }
+.leaflet-popup-tip { background:var(--sf); }
+.leaflet-popup-close-button { color:var(--tx2) !important; font-size:17px !important; top:5px !important; right:5px !important; }
+.leaflet-control-zoom a { background:var(--sf) !important; color:var(--tx) !important; border-color:var(--bd) !important; }
+.leaflet-control-zoom a:hover { background:var(--sf2) !important; }
+.leaflet-control-attribution { background:rgba(240,240,235,.85) !important; color:#888 !important; font-size:9px; }
+[data-theme="dark"] .leaflet-control-attribution { background:rgba(15,15,19,.8) !important; }
+.leaflet-control-attribution a { color:#999 !important; }
+
+/* 勤務地マーカー */
+.base-wrap { position:relative; width:40px; height:40px; }
+.base-pulse { position:absolute; top:-6px; left:-6px; width:52px; height:52px; border-radius:50%; background:rgba(232,147,90,.28); animation:bPulse 2.3s ease-out infinite; }
+.base-pulse2 { animation-delay:1.15s; }
+.base-core  { position:absolute; inset:0; border-radius:50%; background:var(--accent); border:3px solid #fff; box-shadow:0 3px 10px rgba(0,0,0,.4); display:flex; align-items:center; justify-content:center; font-size:18px; }
+@keyframes bPulse { 0%{transform:scale(.7);opacity:.8;} 100%{transform:scale(2);opacity:0;} }
+
+/* ポップアップ内 */
+.pp-name  { font-size:13px; font-weight:700; margin-bottom:2px; }
+.pp-genre { font-size:11px; color:var(--tx2); margin-bottom:5px; }
+.pp-price { font-size:13px; font-weight:700; color:var(--accent); }
+.pp-walk  { font-size:11px; color:var(--tx2); margin-top:2px; }
+.pp-btn   { display:block; width:100%; margin-top:8px; padding:7px; background:var(--accent); color:#fff; border:none; border-radius:7px; font-size:12px; font-weight:700; text-align:center; cursor:pointer; }
+.pp-btn:hover { opacity:.85; }
+
+/* 距離サークル */
+.dist-circle { stroke:var(--accent); stroke-width:1.5; stroke-dasharray:6,4; fill:rgba(232,147,90,.04); }
+
+/* ═══ モバイル ═══════════════════════════════ */
+@media (max-width:768px) {
+  .hd-title small { display:none; }
+  .main { flex-direction:column; }
+  #map { height:52vh; flex:none; }
+  .sidebar { width:100%; flex:1; min-height:0; border-left:none; border-top:1px solid var(--bd); }
+}
+  </style>
+</head>
+<body>
+
+<!-- Header -->
+<header>
+  <svg class="hd-logo" width="20" height="20" viewBox="0 0 24 24" fill="none">
+    <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z" fill="#e8935a"/>
+  </svg>
+  <div class="hd-title">
+    <h1>三田・田町 <span>マップ</span></h1>
+    <small>新職場周辺ガイド</small>
+  </div>
+  <div class="mode-toggle">
+    <button class="mode-btn active" data-mode="gourmet">🍜 グルメ</button>
+    <button class="mode-btn" data-mode="shop">🛒 買い出し</button>
+  </div>
+  <span id="visibleCount"></span>
+  <button class="icon-btn" id="settingsBtn" title="拠点設定">⚙️</button>
+  <button class="icon-btn" id="themeBtn" title="テーマ切替">☀️</button>
+</header>
+
+<!-- フィルター -->
+<div class="filter-area">
+  <div class="filter-row" id="catFilterRow"></div>
+  <div class="filter-row">
+    <span class="filter-label">📍 半径</span>
+    <button class="f-btn active" data-radius="0">すべて</button>
+    <button class="f-btn" data-radius="300">300m</button>
+    <button class="f-btn" data-radius="500">500m</button>
+    <button class="f-btn" data-radius="800">800m</button>
+    <button class="f-btn" data-radius="1000">1km</button>
+  </div>
+</div>
+
+<!-- メイン -->
+<div class="main">
+  <div id="map"></div>
+  <div class="sidebar">
+    <!-- リストペイン -->
+    <div class="sidebar-pane list-pane" id="listPane">
+      <div class="pane-header">
+        <strong id="paneTitle">全店舗</strong>
+        <span id="paneSub"></span>
+      </div>
+      <div class="pane-scroll">
+        <div class="card-list" id="cardList"></div>
+      </div>
+    </div>
+    <!-- 詳細ペイン -->
+    <div class="sidebar-pane detail-pane" id="detailPane">
+      <div class="pane-header">
+        <button class="icon-btn" id="backBtn" style="width:28px;height:28px;font-size:13px;flex-shrink:0">←</button>
+        <strong id="detailPaneTitle" style="flex:1;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0"></strong>
+        <button class="fav-btn" id="favBtn">♡</button>
+      </div>
+      <div class="pane-scroll" id="detailScroll">
+        <img class="detail-photo" id="dPhoto" src="" alt="" onerror="this.style.display='none'">
+        <div class="detail-body">
+          <div class="detail-name" id="dName"></div>
+          <div class="detail-meta">
+            <span class="detail-genre" id="dGenre"></span>
+            <span class="detail-price" id="dPrice"></span>
+            <span class="detail-stars" id="dStars"></span>
+          </div>
+          <div class="sec-label">おすすめポイント</div>
+          <div class="recommend-box" id="dRecommend"></div>
+          <div class="sec-label">店舗情報</div>
+          <div id="dInfoRows"></div>
+          <div class="action-btns">
+            <button class="act-btn act-btn-route" id="dRouteMapBtn">🗺️ ルートを表示</button>
+            <button class="act-btn act-btn-secondary" id="dRecordBtn">✏️ 訪問を記録</button>
+          </div>
+          <div class="route-info" id="routeInfo"></div>
+          <a class="gmaps-link" id="dRouteBtn" href="#" target="_blank">↗ Google マップで開く</a>
+          <div class="sec-label" id="dVisitLabel">訪問履歴</div>
+          <div id="dVisitList"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 記録モーダル -->
+<div class="modal-overlay" id="recordModal">
+  <div class="modal">
+    <div class="modal-head">
+      <h3 id="modalSpotName">訪問を記録</h3>
+      <button class="modal-close" id="modalClose">✕</button>
+    </div>
+    <div class="modal-body">
+      <div><label class="form-label">📅 訪問日</label><input type="date" class="form-input" id="recDate"></div>
+      <div><label class="form-label">🍽️ 食べたもの・飲んだもの</label><input type="text" class="form-input" id="recFood" placeholder="例: カルボナーラ、生ビール"></div>
+      <div>
+        <label class="form-label">⭐ 評価</label>
+        <div class="star-picker" id="recStars">
+          <button type="button" data-v="1">☆</button><button type="button" data-v="2">☆</button>
+          <button type="button" data-v="3">☆</button><button type="button" data-v="4">☆</button>
+          <button type="button" data-v="5">☆</button>
+        </div>
+      </div>
+      <div><label class="form-label">📝 メモ</label><textarea class="form-textarea" id="recMemo" placeholder="感想、おすすめメニュー、次回試したいもの…"></textarea></div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn-cancel" id="recCancelBtn">キャンセル</button>
+      <button class="btn-save" id="recSaveBtn">保存する</button>
+    </div>
+  </div>
+</div>
+
+<!-- 設定モーダル -->
+<div class="modal-overlay" id="settingsModal">
+  <div class="modal">
+    <div class="modal-head">
+      <h3>⚙️ 拠点設定</h3>
+      <button class="modal-close" id="settingsClose">✕</button>
+    </div>
+    <div class="modal-body">
+      <div>
+        <label class="form-label">🏷️ 拠点名</label>
+        <input type="text" class="form-input" id="setName" placeholder="例: 勤務地、自宅">
+      </div>
+      <div>
+        <label class="form-label">🔍 住所・場所名で検索</label>
+        <div class="search-row">
+          <input type="text" class="form-input" id="setSearch" placeholder="例: 三田駅、港区三田2丁目">
+          <button class="btn-search" id="setSearchBtn">検索</button>
+        </div>
+        <div id="setSearchResults"></div>
+      </div>
+      <div>
+        <button class="btn-geo" id="setGeoBtn">📍 現在地を拠点に設定</button>
+      </div>
+      <div class="base-status">
+        <div class="form-label" style="margin-bottom:4px">現在の拠点</div>
+        <div class="base-status-name" id="setCurrentName"></div>
+        <div class="base-status-coord" id="setCurrentCoord"></div>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn-cancel" id="setCloseBtn">閉じる</button>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ══════════════════════════════════════════
+   LocalStorage ヘルパー
+══════════════════════════════════════════ */
+const LS_KEY  = 'mita_map_v1';
+const LS_BASE = 'mita_base_v1';
+
+function loadLS()  { try { return JSON.parse(localStorage.getItem(LS_KEY))  || {visits:{},favs:[]}; } catch{return {visits:{},favs:[]};} }
+function saveLS(d) { localStorage.setItem(LS_KEY, JSON.stringify(d)); }
+
+function loadBaseLS() {
+  try {
+    const b = JSON.parse(localStorage.getItem(LS_BASE));
+    return b && b.lat ? b : null;
+  } catch { return null; }
+}
+function saveBaseLS(b) { localStorage.setItem(LS_BASE, JSON.stringify(b)); }
+
+function getVisits(id)  { return loadLS().visits[id] || []; }
+function visitCount(id) { return getVisits(id).length; }
+function isFav(id)      { return loadLS().favs.includes(id); }
+function toggleFav(id)  { const d=loadLS(), i=d.favs.indexOf(id); i>=0?d.favs.splice(i,1):d.favs.push(id); saveLS(d); return i<0; }
+function addVisit(id,e) { const d=loadLS(); if(!d.visits[id])d.visits[id]=[]; d.visits[id].unshift(e); saveLS(d); }
+function delVisit(id,ts){ const d=loadLS(); if(d.visits[id])d.visits[id]=d.visits[id].filter(v=>v.ts!==ts); saveLS(d); }
+
+/* ══════════════════════════════════════════
+   拠点データ（LocalStorageから読み込み）
+══════════════════════════════════════════ */
+let BASE = loadBaseLS() || { lat:35.6487, lng:139.7393, name:'勤務地（三田駅周辺）' };
+
+/* ══════════════════════════════════════════
+   グルメデータ
+══════════════════════════════════════════ */
+const SPOTS = [
+  { id:1,  cat:'lunch',   name:'パスターヴォラ',          genre:'イタリアン・生パスタ',  price:'¥1,000〜1,999', stars:4,
+    desc:'生パスタ専門店。アマトリチャーナ・カルボナーラが人気。週替わりメニューあり。',
+    recommend:'モチモチの生パスタは一度食べたら忘れられない。ランチのコスパが最高で週替わりメニューも飽きさせない。11:30開店直後がおすすめ。',
+    access:'三田駅 徒歩3分', hours:'11:30〜14:00（売切終了）', holiday:'土日祝', lat:35.6490, lng:139.7408,
+    img:'https://images.unsplash.com/photo-1555949258-eb67b1ef0ceb?w=600&h=240&fit=crop&auto=format' },
+  { id:2,  cat:'lunch',   name:'ホルモンまさる',           genre:'焼肉・ホルモン',        price:'¥1,000〜1,999', stars:4,
+    desc:'13時まで限定の焼肉ランチ定食が¥1,000とコスパ抜群。',
+    recommend:'13時までの限定定食¥1,000は三田随一のコスパ。早めに行かないと売り切れることも。ガッツリ食べたい日に最適。',
+    access:'三田駅 徒歩5分', hours:'11:30〜14:00 / 17:00〜23:00', holiday:'日曜', lat:35.6482, lng:139.7402,
+    img:'https://images.unsplash.com/photo-1544025162-d76694265947?w=600&h=240&fit=crop&auto=format' },
+  { id:3,  cat:'lunch',   name:'晩翠（バンスイ）',         genre:'和牛焼肉',              price:'〜¥999',        stars:4,
+    desc:'和牛焼き肉ランチが¥1,000〜¥1,500。リーズナブルに上質な和牛が楽しめる穴場。',
+    recommend:'ランチに和牛が食べられる三田の穴場。知る人ぞ知る名店で、行きつけにしたい一軒。',
+    access:'三田駅 徒歩4分', hours:'11:30〜14:00 / 17:00〜22:00', holiday:'日曜・祝日', lat:35.6492, lng:139.7390,
+    img:'https://images.unsplash.com/photo-1529692236671-f1f6cf9683ba?w=600&h=240&fit=crop&auto=format' },
+  { id:4,  cat:'lunch',   name:'蕎麦一心たすけ',           genre:'立ち食い蕎麦',          price:'〜¥999',        stars:3,
+    desc:'安い・旨い・早いが揃った立ち食い蕎麦。サクッと済ませたい日に最適。',
+    recommend:'¥700程度で出汁の効いた蕎麦が楽しめる。15分で食事を完了できるので忙しいランチタイムに重宝。',
+    access:'三田駅 徒歩2分', hours:'7:00〜21:00', holiday:'土日祝', lat:35.6480, lng:139.7396,
+    img:'https://images.unsplash.com/photo-1569718212165-3a8278d5f624?w=600&h=240&fit=crop&auto=format' },
+  { id:5,  cat:'lunch',   name:'Bistro Roven 三田',        genre:'フレンチビストロ',       price:'¥1,000〜1,999', stars:4,
+    desc:'ロールキャベツとハンバーグが名物。デミグラスソースが絶品。',
+    recommend:'デミグラスのロールキャベツが¥1,200〜。本格フレンチをカジュアルに楽しめる。接待前の下見にも使えるシックな内装。',
+    access:'三田駅 徒歩3分 / 田町駅 徒歩5分', hours:'11:30〜14:30 / 17:30〜22:00', holiday:'日曜', lat:35.6485, lng:139.7412,
+    img:'https://images.unsplash.com/photo-1414235077428-338989a2e8c0?w=600&h=240&fit=crop&auto=format' },
+  { id:6,  cat:'lunch',   name:'テラットリア エッフェ',    genre:'イタリアン',            price:'¥1,000〜1,999', stars:4,
+    desc:'旬の野菜を使った週替わりパスタが評判。夜はコース¥10,000超。',
+    recommend:'夜は高級コースのお店がランチはお手頃。週替わりパスタで毎週通っても飽きない。女性社員とのランチにもぴったり。',
+    access:'三田駅 徒歩5分', hours:'11:30〜14:00 / 18:00〜22:00', holiday:'土日', lat:35.6487, lng:139.7418,
+    img:'https://images.unsplash.com/photo-1551183053-bf91798d792e?w=600&h=240&fit=crop&auto=format' },
+  { id:7,  cat:'dinner',  name:'海鮮問屋 地魚屋 三田店',  genre:'海鮮・個室居酒屋',      price:'¥3,000〜4,999', stars:4,
+    desc:'田町駅徒歩1分。本マグロ・トロたく巻きが絶品。2名〜50名の個室完備。',
+    recommend:'産地直送の新鮮海鮮と個室が魅力。チームの歓送迎会や接待でも使いやすい。プレミアム日本酒との相性抜群。',
+    access:'田町駅 三田口 徒歩1分', hours:'月〜金 16:30〜23:00 / 土 12:00〜21:00', holiday:'日曜', lat:35.6462, lng:139.7470,
+    img:'https://images.unsplash.com/photo-1617196034183-421b4040ed20?w=600&h=240&fit=crop&auto=format' },
+  { id:8,  cat:'dinner',  name:'三田菊次郎',               genre:'懐石・日本料理',        price:'¥6,000〜7,999', stars:5,
+    desc:'田町駅徒歩1分の隠れ家割烹。旬の海鮮を使った懐石料理。接待に最適。',
+    recommend:'職場の接待や特別な会食に使える上質な一軒。旬の海鮮懐石は季節ごとに変わり個室で落ち着いて会話ができる。',
+    access:'田町駅 徒歩1分', hours:'11:30〜14:00 / 17:30〜22:00', holiday:'日曜・祝日', lat:35.6460, lng:139.7465,
+    img:'https://images.unsplash.com/photo-1547592166-23ac45744acd?w=600&h=240&fit=crop&auto=format' },
+  { id:9,  cat:'dinner',  name:'LODA 三田店',              genre:'イタリアン',            price:'¥3,000〜4,999', stars:4,
+    desc:'旬食材のクリエイティブなイタリア料理。ランチ〜カフェ〜ディナーまで通し営業。',
+    recommend:'自家製デザートが絶品で女性にも好評。コースからアラカルトまで柔軟に対応。一人ディナーにも使いやすい。',
+    access:'三田駅 徒歩3分', hours:'11:00〜23:00（通し）', holiday:'土日祝', lat:35.6483, lng:139.7400,
+    img:'https://images.unsplash.com/photo-1579871494447-9811cf80d66c?w=600&h=240&fit=crop&auto=format' },
+  { id:10, cat:'izakaya', name:'九丁目酒場',               genre:'和風居酒屋',            price:'¥2,000〜2,999', stars:4,
+    desc:'昭和レトロな雰囲気。串揚げ・おでん・海鮮・ホルモンが手作り。飲み放題¥3,850〜。',
+    recommend:'昭和レトロな空間で気軽に飲める定番居酒屋。手作りの串揚げとおでんが絶品。職場の飲み会の定番にしたい一軒。',
+    access:'三田駅 徒歩3分', hours:'17:00〜24:00', holiday:'日曜', lat:35.6488, lng:139.7404,
+    img:'https://images.unsplash.com/photo-1580822184713-fc5400e7fe10?w=600&h=240&fit=crop&auto=format' },
+  { id:11, cat:'izakaya', name:'千年の宴 三田南口駅前店',  genre:'居酒屋',                price:'¥3,000〜3,999', stars:3,
+    desc:'三田駅直結の好立地。年中無休で17:00〜翌1:00まで営業。',
+    recommend:'「とりあえず一杯」に最適な駅直結の居酒屋。年中無休・深夜1時まで営業なので残業後でも使いやすい。',
+    access:'三田駅 直結', hours:'17:00〜翌1:00（年中無休）', holiday:'なし', lat:35.6484, lng:139.7394,
+    img:'https://images.unsplash.com/photo-1503764654157-72d979d9af2f?w=600&h=240&fit=crop&auto=format' },
+  { id:12, cat:'izakaya', name:'鶏と魚菜と旨い酒 蔵人',   genre:'海鮮・日本酒居酒屋',   price:'¥3,000〜4,999', stars:4,
+    desc:'明石市場から直送の新鮮な魚が自慢。オーナー厳選の日本酒が豊富。',
+    recommend:'日本酒好きには特におすすめ。明石から直送される鮮魚は鮮度が別格。冬季のとらふぐ鍋コースも見逃せない。',
+    access:'三田駅 徒歩6分', hours:'17:30〜23:00', holiday:'日曜・祝日', lat:35.6490, lng:139.7416,
+    img:'https://images.unsplash.com/photo-1611143669185-af224c5e3252?w=600&h=240&fit=crop&auto=format' },
+  { id:13, cat:'bar',     name:'The Bar IDEAL NUMBERS',    genre:'一軒家バー・カクテル',  price:'¥3,000〜4,999', stars:5,
+    desc:'裏路地の一軒家バー。吹き抜け天井で開放感抜群。季節のシャンパンカクテルが看板。',
+    recommend:'三田エリアで最もおすすめのバー。バーテンダーが一杯ずつ丁寧に作るカクテルは芸術品。デートや特別な夜に最適。',
+    access:'三田駅 徒歩2分 / 田町駅 徒歩4分', hours:'18:00〜翌3:00', holiday:'日曜・月曜', lat:35.6480, lng:139.7397,
+    img:'https://images.unsplash.com/photo-1551538827-9c037cb4f32a?w=600&h=240&fit=crop&auto=format' },
+  { id:14, cat:'bar',     name:'Bar Reveur 田町',          genre:'ウイスキー・カクテル',  price:'¥3,000〜4,999', stars:4,
+    desc:'入手困難な日本酒・ウイスキーを厳選。「響」「山崎」など国産ウイスキーが充実。',
+    recommend:'ウイスキー好き必訪。山崎・響など希少な国産ウイスキーが充実。仕事帰りのゆっくりとした一人飲みにも最適。',
+    access:'田町駅 東口 徒歩8分', hours:'月〜土 19:00〜翌5:00', holiday:'日曜・祝日', lat:35.6455, lng:139.7468,
+    img:'https://images.unsplash.com/photo-1569529465841-dfecdab7503b?w=600&h=240&fit=crop&auto=format' },
+  { id:15, cat:'bar',     name:'粋 田町店',                genre:'和モダン・隠れ家バー',  price:'¥5,000〜7,999', stars:4,
+    desc:'黒毛和牛・地鶏の炭火焼きと創作酒肴。和モダンの個室で接待にも。',
+    recommend:'バーと和食の融合が楽しめる上質な隠れ家。接待や特別な飲み会に最適。シンプルモダンな和空間が大人の夜にぴったり。',
+    access:'田町駅 芝浦口 徒歩4分', hours:'18:00〜翌1:00', holiday:'日曜・祝日', lat:35.6462, lng:139.7481,
+    img:'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=600&h=240&fit=crop&auto=format' },
+  { id:16, cat:'cafe',    name:"Tully's Coffee 三田国際ビルB1", genre:'コーヒーチェーン', price:'〜¥999',        stars:3,
+    desc:'三田国際ビルB1Fに位置。朝の一杯や打ち合わせに便利。Wi-Fi・電源完備。',
+    recommend:'職場直結エリアのタリーズ。モーニングから使えてWi-Fi・電源完備。朝の打ち合わせや昼休みのコーヒーブレイクに便利。',
+    access:'三田駅 直結（三田国際ビルB1F）', hours:'7:30〜20:00', holiday:'土日祝', lat:35.6487, lng:139.7393,
+    img:'https://images.unsplash.com/photo-1495474472287-4d71bcdd2085?w=600&h=240&fit=crop&auto=format' },
+  { id:17, cat:'cafe',    name:'Cafe Felice',              genre:'カフェ',                price:'〜¥999',        stars:3,
+    desc:'三田エリアの老舗カフェ。落ち着いた空間でランチやアフタヌーンティーを楽しめる。',
+    recommend:'騒がしいオフィス街の中でゆっくりできる落ち着きのある空間。資料を広げての作業にも適しており、仕事の合間のリフレッシュに最適。',
+    access:'三田駅 徒歩4分', hours:'8:00〜19:00', holiday:'土日', lat:35.6476, lng:139.7410,
+    img:'https://images.unsplash.com/photo-1509042239860-f550ce710b93?w=600&h=240&fit=crop&auto=format' },
+  { id:18, cat:'cafe',    name:'LODA三田（カフェタイム）', genre:'イタリアンカフェ',       price:'¥1,000〜1,999', stars:4,
+    desc:'14:30〜18:00はカフェ利用可。自家製デザートとコーヒーが充実。',
+    recommend:'14:30〜18:00のカフェタイムは穴場。自家製ティラミスは絶品で、仕事後の自分へのご褒美にぴったり。',
+    access:'三田駅 徒歩3分', hours:'14:30〜18:00（カフェタイム）', holiday:'土日祝', lat:35.6484, lng:139.7401,
+    img:'https://images.unsplash.com/photo-1461023058943-07fcbe16d735?w=600&h=240&fit=crop&auto=format' },
+];
+
+/* ══════════════════════════════════════════
+   買い出しデータ
+══════════════════════════════════════════ */
+const SHOPS = [
+  { id:101, cat:'conv',  name:'セブン-イレブン 三田1丁目店',    genre:'コンビニ',         price:'〜¥999',        stars:3,
+    desc:'三田駅すぐのセブン-イレブン。ATMあり。朝食・昼食の調達に便利。',
+    recommend:'ATM完備で銀行代わりにも使える。弁当・サラダが充実しており、忙しい朝の調達に最適。',
+    access:'三田駅 徒歩1分', hours:'24時間', holiday:'なし', lat:35.6491, lng:139.7378,
+    img:'https://images.unsplash.com/photo-1604719312566-8912e9227c6a?w=600&h=240&fit=crop&auto=format' },
+  { id:102, cat:'conv',  name:'ローソン 芝3丁目店',             genre:'コンビニ',         price:'〜¥999',        stars:3,
+    desc:'ローソン。プレミアム商品が充実。コーヒーとスイーツが人気。',
+    recommend:'ローソンカフェのコーヒーは職場へのテイクアウトにも使える。スイーツの充実度が高い。',
+    access:'三田駅 徒歩3分', hours:'24時間', holiday:'なし', lat:35.6479, lng:139.7383,
+    img:'https://images.unsplash.com/photo-1604719312566-8912e9227c6a?w=600&h=240&fit=crop&auto=format' },
+  { id:103, cat:'conv',  name:'ファミリーマート 田町駅前店',    genre:'コンビニ',         price:'〜¥999',        stars:3,
+    desc:'田町駅前のファミマ。ファミチキ・ファミマカフェが人気。',
+    recommend:'田町駅前の立地で帰り道に寄りやすい。ファミチキは小腹が空いた時に最適。',
+    access:'田町駅 徒歩1分', hours:'24時間', holiday:'なし', lat:35.6458, lng:139.7475,
+    img:'https://images.unsplash.com/photo-1604719312566-8912e9227c6a?w=600&h=240&fit=crop&auto=format' },
+  { id:104, cat:'conv',  name:'セブン-イレブン 田町駅東口店',   genre:'コンビニ',         price:'〜¥999',        stars:3,
+    desc:'田町駅東口近くのセブン。弁当・デザートが充実。',
+    recommend:'田町駅東口からすぐ。帰り道のデザートやおつまみの調達に便利。品揃えが豊富。',
+    access:'田町駅 東口 徒歩2分', hours:'24時間', holiday:'なし', lat:35.6452, lng:139.7483,
+    img:'https://images.unsplash.com/photo-1604719312566-8912e9227c6a?w=600&h=240&fit=crop&auto=format' },
+  { id:201, cat:'super', name:'ライフ 田町店',                  genre:'スーパーマーケット',price:'〜¥2,999',      stars:4,
+    desc:'田町エリア最大のスーパー。食材・日用品が揃う。惣菜コーナーが充実。',
+    recommend:'惣菜コーナーのランチボックスがコスパ抜群。夕方以降は値引きシールも出るのでねらい目。',
+    access:'田町駅 徒歩8分', hours:'9:00〜22:00', holiday:'不定休', lat:35.6444, lng:139.7455,
+    img:'https://images.unsplash.com/photo-1542838132-92c53300491e?w=600&h=240&fit=crop&auto=format' },
+  { id:202, cat:'super', name:'まいばすけっと 三田4丁目店',     genre:'小型スーパー',     price:'〜¥1,999',      stars:3,
+    desc:'イオン系の小型スーパー。三田駅近くで便利。価格が安い。',
+    recommend:'三田駅から近く、仕事帰りにサクッと買い物できる。価格が安くコスパよし。',
+    access:'三田駅 徒歩4分', hours:'7:00〜23:00', holiday:'なし', lat:35.6481, lng:139.7385,
+    img:'https://images.unsplash.com/photo-1542838132-92c53300491e?w=600&h=240&fit=crop&auto=format' },
+  { id:301, cat:'drug',  name:'マツモトキヨシ 三田店',          genre:'ドラッグストア',   price:'〜¥2,999',      stars:3,
+    desc:'三田駅近くのマツキヨ。薬・化粧品・日用品が揃う。',
+    recommend:'薬から化粧品・食品まで幅広く揃う。ポイントカードを作っておくとお得。職場近くで緊急時にも頼れる。',
+    access:'三田駅 徒歩3分', hours:'10:00〜21:00', holiday:'不定休', lat:35.6483, lng:139.7395,
+    img:'https://images.unsplash.com/photo-1585435557343-3b092031a831?w=600&h=240&fit=crop&auto=format' },
+  { id:302, cat:'drug',  name:'ウエルシア 田町店',              genre:'ドラッグストア',   price:'〜¥2,999',      stars:3,
+    desc:'田町エリアのウエルシア。Tポイントが使える。食品・日用品も充実。',
+    recommend:'Tポイントが使えて食品・日用品も揃う。閉店時間が比較的遅く残業帰りにも寄れる。',
+    access:'田町駅 徒歩5分', hours:'10:00〜22:00', holiday:'不定休', lat:35.6460, lng:139.7478,
+    img:'https://images.unsplash.com/photo-1585435557343-3b092031a831?w=600&h=240&fit=crop&auto=format' },
+];
+
+/* ══════════════════════════════════════════
+   カテゴリ定義
+══════════════════════════════════════════ */
+const GOURMET_CATS = [
+  {id:'all',label:'すべて',color:'#e8935a'},{id:'lunch',label:'ランチ',color:'#f59e2b'},
+  {id:'dinner',label:'ディナー',color:'#ef4444'},{id:'izakaya',label:'居酒屋・飲み',color:'#a855f7'},
+  {id:'bar',label:'バー',color:'#06b6d4'},{id:'cafe',label:'カフェ',color:'#22c55e'},
+];
+const SHOP_CATS = [
+  {id:'all',label:'すべて',color:'#e8935a'},{id:'conv',label:'コンビニ',color:'#ff7043'},
+  {id:'super',label:'スーパー',color:'#26a69a'},{id:'drug',label:'ドラッグストア',color:'#7e57c2'},
+];
+const CAT_COLOR = {}, CAT_LABEL = {};
+[...GOURMET_CATS,...SHOP_CATS].forEach(c=>{ CAT_COLOR[c.id]=c.color; CAT_LABEL[c.id]=c.label; });
+
+const TILE = {
+  light:'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',
+  dark: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
+};
+const TILE_ATTR = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/">CARTO</a>';
+
+/* ══════════════════════════════════════════
+   State
+══════════════════════════════════════════ */
+let mode='gourmet', filter='all', radius=0, isDark=false;
+let activeId=null, recRating=3, modalSpotId=null, detailSpot=null;
+let map, tileLayer, distCircle, routeLayer;
+const markers = {};
+
+/* ══════════════════════════════════════════
+   距離計算
+══════════════════════════════════════════ */
+function haversineM(a,b,c,d) {
+  const R=6371000,r=Math.PI/180,dL=(c-a)*r,dG=(d-b)*r;
+  const x=Math.sin(dL/2)**2+Math.cos(a*r)*Math.cos(c*r)*Math.sin(dG/2)**2;
+  return R*2*Math.atan2(Math.sqrt(x),Math.sqrt(1-x));
+}
+function walkMin(s){ return Math.max(1,Math.ceil(haversineM(BASE.lat,BASE.lng,s.lat,s.lng)/80)); }
+function currentData(){ return mode==='gourmet'?SPOTS:SHOPS; }
+
+/* ══════════════════════════════════════════
+   フィルター適用
+══════════════════════════════════════════ */
+function applyFilters(){
+  const filtered = currentData().filter(s=>{
+    const catOk  = filter==='all' || s.cat===filter;
+    const distOk = radius===0 || haversineM(BASE.lat,BASE.lng,s.lat,s.lng)<=radius;
+    return catOk && distOk;
+  });
+  renderCards(filtered);
+  if(map) updateMarkers(filtered);
+  updateDistCircle();
+}
+
+/* ══════════════════════════════════════════
+   カード描画
+══════════════════════════════════════════ */
+function renderCards(spots){
+  const list=document.getElementById('cardList');
+  list.innerHTML='';
+  document.getElementById('visibleCount').textContent=spots.length+'件';
+  document.getElementById('paneTitle').textContent=filter==='all'?(mode==='gourmet'?'全グルメ':'全買い出し先'):CAT_LABEL[filter];
+  document.getElementById('paneSub').textContent=' — '+spots.length+'件';
+  spots.forEach(s=>{
+    const mins=walkMin(s), vc=visitCount(s.id), faved=isFav(s.id);
+    const el=document.createElement('div');
+    el.className='card'+(s.id===activeId?' active':'');
+    el.dataset.cat=s.cat; el.dataset.id=s.id;
+    el.innerHTML=`
+      <div class="card-row1">
+        <div class="card-name">${s.name}</div>
+        <div class="card-badges">
+          ${vc>0?`<span class="visit-badge">${vc}回</span>`:''}
+          <span class="fav-icon${faved?' on':''}">♥</span>
+        </div>
+      </div>
+      <span class="card-genre-tag">${s.genre}</span>
+      <div class="card-desc">${s.desc}</div>
+      <div class="card-footer">
+        <span class="price-tag">${s.price}</span>
+        <span class="cat-badge ${s.cat}">${CAT_LABEL[s.cat]}</span>
+        <span class="stars-sm">${'★'.repeat(s.stars)}${'☆'.repeat(5-s.stars)}</span>
+        <span class="walk-sm">🚶 ${mins}分</span>
+      </div>`;
+    el.addEventListener('click',()=>onSelect(s));
+    list.appendChild(el);
+  });
+}
+
+/* ══════════════════════════════════════════
+   マーカー更新
+══════════════════════════════════════════ */
+function updateMarkers(vis){
+  const ids=new Set(vis.map(s=>s.id));
+  Object.keys(markers).forEach(k=>{
+    if(k==='base') return;
+    const id=parseInt(k);
+    ids.has(id)?markers[id].addTo(map):markers[id].remove();
+  });
+}
+function updateDistCircle(){
+  if(distCircle){map.removeLayer(distCircle);distCircle=null;}
+  if(radius>0) distCircle=L.circle([BASE.lat,BASE.lng],{radius,className:'dist-circle'}).addTo(map);
+}
+
+/* ══════════════════════════════════════════
+   スポット選択
+══════════════════════════════════════════ */
+function onSelect(s){
+  activeId=s.id;
+  if(map&&markers[s.id]){
+    map.setView([s.lat,s.lng],17,{animate:true});
+    markers[s.id].openPopup();
+  }
+  openDetail(s);
+}
+window.__sel=id=>{ const s=currentData().find(x=>x.id===id); if(s) onSelect(s); };
+
+/* ══════════════════════════════════════════
+   詳細パネル
+══════════════════════════════════════════ */
+function openDetail(s){
+  activeId=s.id; detailSpot=s;
+  const mins=walkMin(s), faved=isFav(s.id);
+  const el=id=>document.getElementById(id);
+
+  el('detailPaneTitle').textContent=s.name;
+  el('dPhoto').src=s.img; el('dPhoto').alt=s.name;
+  el('dName').textContent=s.name;
+  el('dGenre').textContent=s.genre;
+  el('dPrice').textContent=s.price;
+  el('dStars').textContent='★'.repeat(s.stars)+'☆'.repeat(5-s.stars);
+  el('dRecommend').textContent=s.recommend||s.desc;
+  el('dRouteBtn').href=`https://www.google.com/maps/dir/?api=1&origin=${BASE.lat},${BASE.lng}&destination=${s.lat},${s.lng}&travelmode=walking`;
+
+  const favBtn=el('favBtn');
+  favBtn.textContent=faved?'♥':'♡';
+  favBtn.className='fav-btn'+(faved?' on':'');
+  favBtn.onclick=()=>{
+    const now=toggleFav(s.id);
+    favBtn.textContent=now?'♥':'♡';
+    favBtn.className='fav-btn'+(now?' on':'');
+    applyFilters();
+  };
+
+  el('dInfoRows').innerHTML=`
+    <div class="info-row"><span class="info-ico">🚶</span><span class="info-lbl">徒歩時間</span><span class="info-val"><span class="walk-chip">🏢 拠点から約${mins}分</span></span></div>
+    <div class="info-row"><span class="info-ico">📍</span><span class="info-lbl">アクセス</span><span class="info-val">${s.access}</span></div>
+    <div class="info-row"><span class="info-ico">🕐</span><span class="info-lbl">営業時間</span><span class="info-val">${s.hours}</span></div>
+    <div class="info-row"><span class="info-ico">📅</span><span class="info-lbl">定休日</span><span class="info-val">${s.holiday||'要確認'}</span></div>`;
+
+  // ルートボタン
+  const routeBtn=el('dRouteMapBtn');
+  routeBtn.className='act-btn act-btn-route';
+  routeBtn.textContent='🗺️ ルートを表示';
+  el('routeInfo').textContent='';
+  routeBtn.onclick=()=>toggleRoute(s);
+
+  el('dRecordBtn').onclick=()=>openRecordModal(s);
+  renderVisitHistory(s.id);
+
+  el('detailScroll').scrollTop=0;
+  el('listPane').classList.add('out');
+  el('detailPane').classList.add('in');
+}
+
+function closeDetail(){
+  activeId=null; detailSpot=null;
+  clearRoute();
+  document.getElementById('detailPane').classList.remove('in');
+  document.getElementById('listPane').classList.remove('out');
+  applyFilters();
+}
+document.getElementById('backBtn').addEventListener('click',closeDetail);
+
+/* ══════════════════════════════════════════
+   マップルーティング（OSRM）
+══════════════════════════════════════════ */
+function clearRoute(){
+  if(routeLayer){map.removeLayer(routeLayer);routeLayer=null;}
+  document.getElementById('routeInfo').textContent='';
+  const btn=document.getElementById('dRouteMapBtn');
+  if(btn){btn.className='act-btn act-btn-route';btn.textContent='🗺️ ルートを表示';}
+}
+
+async function toggleRoute(s){
+  const btn=document.getElementById('dRouteMapBtn');
+  if(routeLayer){
+    clearRoute(); return;
+  }
+  btn.textContent='⏳ 取得中…'; btn.disabled=true;
+  try {
+    const url=`https://router.project-osrm.org/route/v1/foot/${BASE.lng},${BASE.lat};${s.lng},${s.lat}?overview=full&geometries=geojson`;
+    const res=await fetch(url);
+    const data=await res.json();
+    if(!data.routes||!data.routes[0]) throw new Error('no route');
+    const leg=data.routes[0].legs[0];
+    const dist=Math.round(leg.distance);
+    const mins=Math.round(leg.duration/60);
+    routeLayer=L.geoJSON(data.routes[0].geometry,{
+      style:{color:'#e8935a',weight:4,opacity:.85,dashArray:'10,5'},
+    }).addTo(map);
+    map.fitBounds(routeLayer.getBounds(),{padding:[40,40]});
+    document.getElementById('routeInfo').textContent=`📏 ${dist}m・約${mins}分`;
+    btn.className='act-btn act-btn-route active';
+    btn.textContent='✕ ルートを消す';
+  } catch(e){
+    document.getElementById('routeInfo').textContent='ルートを取得できませんでした';
+    btn.textContent='🗺️ ルートを表示';
+  } finally { btn.disabled=false; }
+}
+
+/* ══════════════════════════════════════════
+   訪問履歴
+══════════════════════════════════════════ */
+function renderVisitHistory(id){
+  const visits=getVisits(id), vc=visits.length;
+  document.getElementById('dVisitLabel').textContent=`訪問履歴（${vc}回）`;
+  const c=document.getElementById('dVisitList');
+  if(!vc){c.innerHTML='<div class="visit-empty">まだ訪問記録がありません</div>';return;}
+  c.innerHTML=visits.map(v=>`
+    <div class="visit-item">
+      <div class="visit-item-head">
+        <span class="visit-date">${v.date}</span>
+        <span class="visit-stars">${'★'.repeat(v.rating)}${'☆'.repeat(5-v.rating)}</span>
+        <button class="del-btn" onclick="__delVisit(${id},${v.ts})">🗑</button>
+      </div>
+      ${v.food?`<div class="visit-food">🍽️ ${v.food}</div>`:''}
+      ${v.memo?`<div class="visit-memo">📝 ${v.memo}</div>`:''}
+    </div>`).join('');
+}
+window.__delVisit=(id,ts)=>{
+  if(!confirm('この記録を削除しますか？'))return;
+  delVisit(id,ts); renderVisitHistory(id); applyFilters();
+};
+
+/* ══════════════════════════════════════════
+   記録モーダル
+══════════════════════════════════════════ */
+function openRecordModal(s){
+  modalSpotId=s.id; recRating=3;
+  document.getElementById('modalSpotName').textContent=`📝 ${s.name}`;
+  document.getElementById('recDate').value=new Date().toISOString().slice(0,10);
+  document.getElementById('recFood').value='';
+  document.getElementById('recMemo').value='';
+  updateStarPicker(3);
+  document.getElementById('recordModal').classList.add('open');
+}
+function closeRecordModal(){ document.getElementById('recordModal').classList.remove('open'); }
+function updateStarPicker(v){
+  recRating=v;
+  document.querySelectorAll('#recStars button').forEach(b=>b.classList.toggle('lit',parseInt(b.dataset.v)<=v));
+}
+document.querySelectorAll('#recStars button').forEach(b=>b.addEventListener('click',()=>updateStarPicker(parseInt(b.dataset.v))));
+document.getElementById('modalClose').addEventListener('click',closeRecordModal);
+document.getElementById('recCancelBtn').addEventListener('click',closeRecordModal);
+document.getElementById('recordModal').addEventListener('click',e=>{if(e.target===document.getElementById('recordModal'))closeRecordModal();});
+document.getElementById('recSaveBtn').addEventListener('click',()=>{
+  addVisit(modalSpotId,{
+    date:document.getElementById('recDate').value||new Date().toISOString().slice(0,10),
+    food:document.getElementById('recFood').value.trim(),
+    rating:recRating,
+    memo:document.getElementById('recMemo').value.trim(),
+    ts:Date.now(),
+  });
+  closeRecordModal();
+  renderVisitHistory(modalSpotId);
+  applyFilters();
+});
+
+/* ══════════════════════════════════════════
+   設定モーダル
+══════════════════════════════════════════ */
+function openSettingsModal(){
+  document.getElementById('setName').value=BASE.name;
+  document.getElementById('setSearch').value='';
+  document.getElementById('setSearchResults').innerHTML='';
+  updateBaseStatus();
+  document.getElementById('settingsModal').classList.add('open');
+}
+function closeSettingsModal(){ document.getElementById('settingsModal').classList.remove('open'); }
+function updateBaseStatus(){
+  document.getElementById('setCurrentName').textContent=BASE.name;
+  document.getElementById('setCurrentCoord').textContent=`緯度: ${BASE.lat.toFixed(5)} / 経度: ${BASE.lng.toFixed(5)}`;
+}
+function applyBase(lat,lng,name){
+  BASE={lat,lng,name};
+  saveBaseLS(BASE);
+  updateBaseStatus();
+  refreshBaseMarker();
+  applyFilters();
+  if(radius>0) map.setView([lat,lng],15,{animate:true});
+}
+function refreshBaseMarker(){
+  if(markers['base']){
+    markers['base'].setLatLng([BASE.lat,BASE.lng]);
+    markers['base'].setPopupContent(`<div class="pp-name">🏢 ${BASE.name}</div><div class="pp-genre" style="color:var(--accent)">ここが拠点です</div>`);
+  }
+  // ポップアップの徒歩時間を更新
+  [...SPOTS,...SHOPS].forEach(s=>{
+    if(markers[s.id]) markers[s.id].setPopupContent(`
+      <div class="pp-name">${s.name}</div>
+      <div class="pp-genre">${s.genre}</div>
+      <div class="pp-price">${s.price}</div>
+      <div class="pp-walk">🚶 拠点から約${walkMin(s)}分</div>
+      <button class="pp-btn" onclick="__sel(${s.id})">詳細を見る →</button>`);
+  });
+  updateDistCircle();
+}
+async function searchNominatim(){
+  const q=document.getElementById('setSearch').value.trim();
+  if(!q)return;
+  const res_el=document.getElementById('setSearchResults');
+  res_el.innerHTML='<div class="search-loading">検索中…</div>';
+  try{
+    const res=await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(q)}&countrycodes=jp&limit=5&accept-language=ja`);
+    const data=await res.json();
+    if(!data.length){res_el.innerHTML='<div class="search-loading">見つかりませんでした</div>';return;}
+    res_el.innerHTML='<div class="search-results">'+data.map((r,i)=>`
+      <div class="sr-item" onclick="__pickLocation(${r.lat},${r.lon},'${(r.display_name||'').replace(/'/g,'&#39;').substring(0,40)}',${i})">
+        <div class="sr-item-name">${(r.display_name||'').split(',')[0]}</div>
+        <div class="sr-item-addr">${(r.display_name||'').substring(0,60)}</div>
+      </div>`).join('')+'</div>';
+  }catch{res_el.innerHTML='<div class="search-loading">検索に失敗しました</div>';}
+}
+window.__pickLocation=(lat,lng,name)=>{
+  const n=document.getElementById('setName').value.trim()||name||'拠点';
+  applyBase(parseFloat(lat),parseFloat(lng),n);
+  closeSettingsModal();
+  map.setView([parseFloat(lat),parseFloat(lng)],16,{animate:true});
+};
+document.getElementById('settingsBtn').addEventListener('click',openSettingsModal);
+document.getElementById('settingsClose').addEventListener('click',closeSettingsModal);
+document.getElementById('setCloseBtn').addEventListener('click',closeSettingsModal);
+document.getElementById('settingsModal').addEventListener('click',e=>{if(e.target===document.getElementById('settingsModal'))closeSettingsModal();});
+document.getElementById('setSearchBtn').addEventListener('click',searchNominatim);
+document.getElementById('setSearch').addEventListener('keydown',e=>{if(e.key==='Enter')searchNominatim();});
+document.getElementById('setGeoBtn').addEventListener('click',()=>{
+  if(!navigator.geolocation){alert('位置情報が利用できません');return;}
+  document.getElementById('setGeoBtn').textContent='📡 取得中…';
+  navigator.geolocation.getCurrentPosition(pos=>{
+    const name=document.getElementById('setName').value.trim()||'現在地';
+    applyBase(pos.coords.latitude,pos.coords.longitude,name);
+    document.getElementById('setGeoBtn').textContent='📍 現在地を拠点に設定';
+    closeSettingsModal();
+    map.setView([pos.coords.latitude,pos.coords.longitude],16,{animate:true});
+  },()=>{
+    alert('位置情報の取得に失敗しました');
+    document.getElementById('setGeoBtn').textContent='📍 現在地を拠点に設定';
+  });
+});
+
+/* ══════════════════════════════════════════
+   モード切替
+══════════════════════════════════════════ */
+function buildCatFilter(){
+  const cats=mode==='gourmet'?GOURMET_CATS:SHOP_CATS;
+  const row=document.getElementById('catFilterRow');
+  row.innerHTML='';
+  cats.forEach(c=>{
+    const btn=document.createElement('button');
+    btn.className='f-btn'+(c.id===filter?' active':'');
+    if(c.id!=='all') btn.innerHTML=`<span class="dot" style="background:${c.color}"></span>`;
+    btn.innerHTML+=c.label;
+    btn.addEventListener('click',()=>{
+      filter=c.id;
+      document.querySelectorAll('#catFilterRow .f-btn').forEach(b=>b.classList.remove('active'));
+      btn.classList.add('active');
+      applyFilters();
+    });
+    row.appendChild(btn);
+  });
+}
+document.querySelectorAll('.mode-btn').forEach(btn=>{
+  btn.addEventListener('click',()=>{
+    mode=btn.dataset.mode; filter='all';
+    closeDetail();
+    document.querySelectorAll('.mode-btn').forEach(b=>b.classList.remove('active'));
+    btn.classList.add('active');
+    buildCatFilter();
+    rebuildModeMarkers();
+    applyFilters();
+  });
+});
+
+/* ══════════════════════════════════════════
+   距離フィルター
+══════════════════════════════════════════ */
+document.querySelectorAll('[data-radius]').forEach(btn=>{
+  btn.addEventListener('click',()=>{
+    radius=parseInt(btn.dataset.radius);
+    document.querySelectorAll('[data-radius]').forEach(b=>b.classList.remove('active'));
+    btn.classList.add('active');
+    if(map&&radius>0) map.setView([BASE.lat,BASE.lng],15,{animate:true});
+    applyFilters();
+  });
+});
+
+/* ══════════════════════════════════════════
+   テーマ切替
+══════════════════════════════════════════ */
+function toggleTheme(){
+  isDark=!isDark;
+  document.documentElement.setAttribute('data-theme',isDark?'dark':'light');
+  document.getElementById('themeBtn').textContent=isDark?'🌙':'☀️';
+  if(tileLayer&&map){
+    map.removeLayer(tileLayer);
+    tileLayer=L.tileLayer(isDark?TILE.dark:TILE.light,{attribution:TILE_ATTR,maxZoom:19}).addTo(map);
+    tileLayer.bringToBack();
+  }
+}
+document.getElementById('themeBtn').addEventListener('click',toggleTheme);
+
+/* ══════════════════════════════════════════
+   地図初期化
+══════════════════════════════════════════ */
+function initMap(){
+  map=L.map('map',{center:[35.6474,139.7430],zoom:15});
+  tileLayer=L.tileLayer(TILE.light,{attribution:TILE_ATTR,maxZoom:19}).addTo(map);
+  const baseIcon=L.divIcon({
+    className:'',
+    html:`<div class="base-wrap"><div class="base-pulse"></div><div class="base-pulse base-pulse2"></div><div class="base-core">🏢</div></div>`,
+    iconSize:[40,40],iconAnchor:[20,20],
+  });
+  markers['base']=L.marker([BASE.lat,BASE.lng],{icon:baseIcon,zIndexOffset:1000}).addTo(map)
+    .bindPopup(`<div class="pp-name">🏢 ${BASE.name}</div><div class="pp-genre" style="color:var(--accent)">ここが拠点です</div>`);
+  buildSpotMarkers(SPOTS);
+  buildSpotMarkers(SHOPS);
+  SHOPS.forEach(s=>markers[s.id].remove());
+}
+function buildSpotMarkers(data){
+  data.forEach(s=>{
+    const m=L.circleMarker([s.lat,s.lng],{radius:9,fillColor:CAT_COLOR[s.cat],fillOpacity:.88,color:'#fff',weight:2});
+    m.bindPopup(`
+      <div class="pp-name">${s.name}</div>
+      <div class="pp-genre">${s.genre}</div>
+      <div class="pp-price">${s.price}</div>
+      <div class="pp-walk">🚶 拠点から約${walkMin(s)}分</div>
+      <button class="pp-btn" onclick="__sel(${s.id})">詳細を見る →</button>`,{maxWidth:220});
+    m.on('click',()=>{
+      const card=document.querySelector(`.card[data-id="${s.id}"]`);
+      if(card){document.querySelectorAll('.card').forEach(c=>c.classList.remove('active'));card.classList.add('active');card.scrollIntoView({behavior:'smooth',block:'nearest'});}
+    });
+    markers[s.id]=m;
+  });
+}
+function rebuildModeMarkers(){
+  SPOTS.forEach(s=>{try{markers[s.id].remove();}catch{}});
+  SHOPS.forEach(s=>{try{markers[s.id].remove();}catch{}});
+  currentData().forEach(s=>markers[s.id]?.addTo(map));
+}
+
+/* ══════════════════════════════════════════
+   起動
+══════════════════════════════════════════ */
+buildCatFilter();
+initMap();
+applyFilters();
+</script>
+</body>
+</html>
