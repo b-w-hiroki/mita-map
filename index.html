@@ -234,20 +234,21 @@ header {
 @keyframes bPulse { 0%{transform:scale(.7);opacity:.8;} 100%{transform:scale(2);opacity:0;} }
 
 /* ポップアップ内 */
-.pp-name  { font-size:13px; font-weight:700; margin-bottom:2px; }
-.pp-genre { font-size:11px; color:var(--tx2); margin-bottom:5px; }
+.pp-wrap  { padding:12px 14px 10px; min-width:180px; }
+.pp-name  { font-size:14px; font-weight:700; margin-bottom:4px; color:var(--tx); }
+.pp-genre { font-size:11px; color:var(--tx2); margin-bottom:6px; }
 .pp-price { font-size:13px; font-weight:700; color:var(--accent); }
-.pp-walk  { font-size:11px; color:var(--tx2); margin-top:2px; }
-.pp-btn   { display:block; width:100%; margin-top:8px; padding:7px; background:var(--accent); color:#fff; border:none; border-radius:7px; font-size:12px; font-weight:700; text-align:center; cursor:pointer; }
+.pp-walk  { font-size:11px; color:var(--tx2); margin-top:3px; }
+.pp-btn   { display:block; width:100%; margin-top:10px; padding:8px; background:var(--accent); color:#fff; border:none; border-radius:8px; font-size:12px; font-weight:700; text-align:center; cursor:pointer; }
 .pp-btn:hover { opacity:.85; }
 
 /* 距離サークル（フィルター選択中） */
 /* Google Maps InfoWindow */
 .gm-style .gm-style-iw-c {
-  background:var(--sf) !important; border-radius:10px !important;
-  box-shadow:0 4px 20px var(--sh) !important; padding:0 !important; max-width:240px !important;
+  background:var(--sf) !important; border-radius:12px !important;
+  box-shadow:0 4px 20px var(--sh) !important; padding:0 !important; max-width:260px !important;
 }
-.gm-style .gm-style-iw-d { overflow:auto !important; padding:0 !important; }
+.gm-style .gm-style-iw-d { overflow:auto !important; padding:0 !important; max-height:none !important; }
 .gm-style .gm-style-iw-t::after { background:var(--sf) !important; }
 .gm-style-iw-chr { display:none !important; }
 .gm-ui-hover-effect { display:none !important; }
