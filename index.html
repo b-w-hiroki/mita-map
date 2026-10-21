@@ -963,16 +963,20 @@ function renderVisitHistory(id){
   document.getElementById('dVisitLabel').textContent=`訪問履歴（${vc}回）`;
   const c=document.getElementById('dVisitList');
   if(!vc){c.innerHTML='<div class="visit-empty">まだ訪問記録がありません</div>';return;}
-  c.innerHTML=visits.map(v=>`
-    <div class="visit-item">
-      <div class="visit-item-head">
-        <span class="visit-date">${v.date}</span>
-        <span class="visit-stars">${'★'.repeat(v.rating)}${'☆'.repeat(5-v.rating)}</span>
-        <button class="del-btn" onclick="__delVisit(${id},${v.ts})">🗑</button>
-      </div>
-      ${v.food?`<div class="visit-food">🍽️ ${v.food}</div>`:''}
-      ${v.memo?`<div class="visit-memo">📝 ${v.memo}</div>`:''}
-    </div>`).join('');
+  c.replaceChildren();
+  visits.forEach(v=>{
+    const item=document.createElement('div'); item.className='visit-item';
+    const head=document.createElement('div'); head.className='visit-item-head';
+    const date=document.createElement('span'); date.className='visit-date'; date.textContent=v.date;
+    const stars=document.createElement('span'); stars.className='visit-stars';
+    stars.textContent='★'.repeat(v.rating)+'☆'.repeat(5-v.rating);
+    const del=document.createElement('button'); del.className='del-btn'; del.textContent='🗑';
+    del.addEventListener('click',()=>window.__delVisit(id,v.ts));
+    head.append(date,stars,del); item.appendChild(head);
+    if(v.food){const food=document.createElement('div'); food.className='visit-food'; food.textContent='🍽️ '+v.food; item.appendChild(food);}
+    if(v.memo){const memo=document.createElement('div'); memo.className='visit-memo'; memo.textContent='📝 '+v.memo; item.appendChild(memo);}
+    c.appendChild(item);
+  });
 }
 window.__delVisit=(id,ts)=>{
   if(!confirm('この記録を削除しますか？'))return;
@@ -1046,7 +1050,12 @@ function refreshBaseMarker(){
   updateDistCircle();
   buildRefRings();
 }
-function ppBaseHTML(){ return `<div class="pp-wrap"><div class="pp-name">🏢 ${BASE.name}</div><div class="pp-genre" style="color:var(--accent)">ここが拠点です</div></div>`; }
+function ppBaseHTML(){
+  const wrap=document.createElement('div'); wrap.className='pp-wrap';
+  const name=document.createElement('div'); name.className='pp-name'; name.textContent='🏢 '+BASE.name;
+  const genre=document.createElement('div'); genre.className='pp-genre'; genre.style.color='var(--accent)'; genre.textContent='ここが拠点です';
+  wrap.append(name,genre); return wrap;
+}
 function ppSpotHTML(s){ return `<div class="pp-wrap"><div class="pp-name">${s.name}</div><div class="pp-genre">${s.genre}</div><div class="pp-price">${s.price}</div><div class="pp-walk">🚶 拠点から約${walkMin(s)}分</div><button class="pp-btn" onclick="__sel(${s.id})">詳細を見る →</button></div>`; }
 async function searchNominatim(){
   const q=document.getElementById('setSearch').value.trim();
@@ -1057,11 +1066,19 @@ async function searchNominatim(){
     const res=await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(q)}&countrycodes=jp&limit=5&accept-language=ja`);
     const data=await res.json();
     if(!data.length){res_el.innerHTML='<div class="search-loading">見つかりませんでした</div>';return;}
-    res_el.innerHTML='<div class="search-results">'+data.map((r,i)=>`
-      <div class="sr-item" onclick="__pickLocation(${r.lat},${r.lon},'${(r.display_name||'').replace(/'/g,'&#39;').substring(0,40)}',${i})">
-        <div class="sr-item-name">${(r.display_name||'').split(',')[0]}</div>
-        <div class="sr-item-addr">${(r.display_name||'').substring(0,60)}</div>
-      </div>`).join('')+'</div>';
+    const results=document.createElement('div'); results.className='search-results';
+    data.forEach(r=>{
+      const item=document.createElement('div'); item.className='sr-item';
+      const name=document.createElement('div'); name.className='sr-item-name';
+      const addr=document.createElement('div'); addr.className='sr-item-addr';
+      const displayName=r.display_name||'';
+      name.textContent=displayName.split(',')[0];
+      addr.textContent=displayName.substring(0,60);
+      item.append(name,addr);
+      item.addEventListener('click',()=>window.__pickLocation(r.lat,r.lon,displayName.substring(0,40)));
+      results.appendChild(item);
+    });
+    res_el.replaceChildren(results);
   }catch{res_el.innerHTML='<div class="search-loading">検索に失敗しました</div>';}
 }
 window.__pickLocation=(lat,lng,name)=>{
