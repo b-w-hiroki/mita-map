@@ -14,3 +14,8 @@ jobs:
       - run: npm install --no-save playwright
       - run: npx playwright install --with-deps chromium
       - run: node browser.test.js
+      - run: node visual.test.js
+      - uses: actions/upload-artifact@v4
+        with:
+          name: offline-browser-qa
+          path: qa-artifacts/
