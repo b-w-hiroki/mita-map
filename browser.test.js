@@ -39,6 +39,26 @@ function source(from, to) {
         result.deleted.join(',') !== '5,9' || result.picked.slice(0, 2).join(',') !== '35.6,139.7')
       throw new Error('Visit or search DOM behavior failed: ' + JSON.stringify(result));
     console.log('Chromium: visit and search text rendered literally; handlers work');
+    await page.setContent('<button id="setGeoBtn">現在地</button><p id="setGeoStatus" role="status"></p><input id="setName"><div id="settingsModal"></div>');
+    await page.addScriptTag({content: `
+      window.saved=[]; window.geoCalls=[]; window.map=null;
+      window.applyBase=(...args)=>saved.push(args);
+      Object.defineProperty(navigator,'geolocation',{value:{getCurrentPosition(...args){geoCalls.push(args);}},configurable:true});
+      ${source('let geoRequest = 0;', 'function updateBaseStatus(')}
+      ${source('function requestCurrentBase(', "document.getElementById('setGeoBtn').addEventListener")}
+      document.getElementById('setGeoBtn').onclick=requestCurrentBase;
+    `});
+    await page.click('#setGeoBtn');
+    await page.evaluate(()=>geoCalls[0][1]({code:1}));
+    if(!(await page.locator('#setGeoStatus').textContent()).includes('住所・駅名')) throw Error('Missing fallback');
+    await page.click('#setGeoBtn');
+    await page.evaluate(()=>{closeSettingsModal(); geoCalls[1][0]({coords:{latitude:1,longitude:2}});});
+    if(await page.evaluate(()=>saved.length)!==0) throw Error('Closed location request changed base');
+    await page.click('#setGeoBtn');
+    await page.evaluate(()=>geoCalls[2][0]({coords:{latitude:3,longitude:4}}));
+    if(await page.evaluate(()=>saved.length)!==1) throw Error('Retry failed');
+    console.log('Chromium: location denial, cancel and retry passed (mocked geolocation, not real device)');
+
   } finally {
     await browser.close();
   }
