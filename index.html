@@ -391,6 +391,8 @@ header {
         <div id="setSearchResults"></div>
       </div>
       <div>
+        <p>位置情報の許可は不要です。住所・駅名の検索でも拠点を設定できます。</p>
+        <p id="setGeoStatus" role="status" aria-live="polite"></p>
         <button class="btn-geo" id="setGeoBtn">📍 現在地を拠点に設定</button>
       </div>
       <div class="base-status">
@@ -891,6 +893,15 @@ function openDetail(s){
     <div class="info-row"><span class="info-ico">🕐</span><span class="info-lbl">営業時間</span><span class="info-val">${s.hours}</span></div>
     <div class="info-row"><span class="info-ico">📅</span><span class="info-lbl">定休日</span><span class="info-val">${s.holiday||'要確認'}</span></div>`;
 
+  const notice=document.createElement('p');
+  notice.textContent='掲載情報の出典・最終確認日は未確認です。営業時間・価格・営業状況は来店前に店舗公式情報で確認してください。徒歩目安は直線距離÷80m/分で、実際の経路・信号を考慮していません。';
+  const correction=document.createElement('a');
+  correction.href='https://github.com/b-w-hiroki/mita-map/issues/new';
+  correction.target='_blank'; correction.rel='noopener noreferrer';
+  correction.textContent='情報の訂正を提案（GitHub・公開）';
+  notice.appendChild(document.createElement('br')); notice.appendChild(correction);
+  el('dInfoRows').appendChild(notice);
+
   // ルートボタン
   const routeBtn=el('dRouteMapBtn');
   routeBtn.className='act-btn act-btn-route';
@@ -1021,13 +1032,23 @@ document.getElementById('recSaveBtn').addEventListener('click',()=>{
    設定モーダル
 ══════════════════════════════════════════ */
 function openSettingsModal(){
+  document.getElementById('setGeoStatus').textContent='';
   document.getElementById('setName').value=BASE.name;
   document.getElementById('setSearch').value='';
   document.getElementById('setSearchResults').innerHTML='';
   updateBaseStatus();
   document.getElementById('settingsModal').classList.add('open');
 }
-function closeSettingsModal(){ document.getElementById('settingsModal').classList.remove('open'); }
+let geoRequest = 0;
+function cancelGeoRequest(){
+  geoRequest++;
+  const btn=document.getElementById('setGeoBtn');
+  btn.disabled=false; btn.textContent='📍 現在地を拠点に設定';
+}
+function closeSettingsModal(){
+  cancelGeoRequest();
+  document.getElementById('settingsModal').classList.remove('open');
+}
 function updateBaseStatus(){
   document.getElementById('setCurrentName').textContent=BASE.name;
   document.getElementById('setCurrentCoord').textContent=`緯度: ${BASE.lat.toFixed(5)} / 経度: ${BASE.lng.toFixed(5)}`;
@@ -1093,20 +1114,27 @@ document.getElementById('setCloseBtn').addEventListener('click',closeSettingsMod
 document.getElementById('settingsModal').addEventListener('click',e=>{if(e.target===document.getElementById('settingsModal'))closeSettingsModal();});
 document.getElementById('setSearchBtn').addEventListener('click',searchNominatim);
 document.getElementById('setSearch').addEventListener('keydown',e=>{if(e.key==='Enter')searchNominatim();});
-document.getElementById('setGeoBtn').addEventListener('click',()=>{
-  if(!navigator.geolocation){alert('位置情報が利用できません');return;}
-  document.getElementById('setGeoBtn').textContent='📡 取得中…';
+function requestCurrentBase(){
+  const btn=document.getElementById('setGeoBtn');
+  const status=document.getElementById('setGeoStatus');
+  if(btn.disabled) return;
+  if(!navigator.geolocation){status.textContent='位置情報を利用できません。住所・駅名の検索をご利用ください。';return;}
+  const request=++geoRequest;
+  btn.disabled=true; btn.textContent='📡 取得中…'; status.textContent='';
   navigator.geolocation.getCurrentPosition(pos=>{
+    if(request!==geoRequest) return;
+    cancelGeoRequest();
     const name=document.getElementById('setName').value.trim()||'現在地';
     applyBase(pos.coords.latitude,pos.coords.longitude,name);
-    document.getElementById('setGeoBtn').textContent='📍 現在地を拠点に設定';
     closeSettingsModal();
     if(map) map.setCenter({lat:pos.coords.latitude,lng:pos.coords.longitude});
-  },()=>{
-    alert('位置情報の取得に失敗しました');
-    document.getElementById('setGeoBtn').textContent='📍 現在地を拠点に設定';
-  });
-});
+  },error=>{
+    if(request!==geoRequest) return;
+    cancelGeoRequest();
+    status.textContent=(error.code===1?'位置情報は許可されていません。':'位置情報を取得できませんでした。')+'拠点は変更していません。住所・駅名の検索をご利用ください。';
+  },{timeout:10000,maximumAge:60000});
+}
+document.getElementById('setGeoBtn').addEventListener('click',requestCurrentBase);
 
 /* ══════════════════════════════════════════
    モード切替
